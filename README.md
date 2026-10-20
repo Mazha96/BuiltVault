@@ -389,20 +389,43 @@ npm run build
 
 ---
 
-## Deployment
-
-The app runs as a single Node process serving both the API and the built frontend static files.
+## Testing
 
 ```bash
-# On the server
-pm2 start backend/index.js --name buildvault
-pm2 save
-pm2 startup   # auto-start on reboot
+cd backend
+npm install
+npm test        # node --test: API, access-control and migration tests
 ```
 
-nginx proxies all traffic on port 443 → Node on port 3001.
+Tests use a throwaway SQLite file and a fake Clerk (`Authorization: Bearer user_<name>` signs in as `user_<name>`),
+so they need no keys or network. `test/fixtures/prod-schema.sql` is the production schema; a test checks that
+`db.js` upgrades it in place.
 
----
+## Deployment
+
+The app runs as one Node process (systemd service `buildvault`) serving the API and the built frontend.
+nginx proxies 443 → Node on port 3001.
+
+Ship an update from the server:
+
+```bash
+cd /root/.openclaw/workspace/buildvault
+./deploy.sh
+```
+
+`deploy.sh` refuses to run with uncommitted changes, pulls `main`, backs up the database to
+`backend/db_backups/` (keeps 20), installs dependencies only if a lockfile changed, builds the frontend,
+restarts the service and runs a health check. If the check fails it prints the rollback commands.
+
+One-time service setup (`/etc/systemd/system/buildvault.service`):
+
+```ini
+[Service]
+WorkingDirectory=/root/.openclaw/workspace/buildvault/backend
+ExecStart=/usr/bin/node index.js
+Restart=always
+Environment=NODE_ENV=production
+```
 
 ## Design System
 
