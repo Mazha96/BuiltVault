@@ -15,7 +15,7 @@ test('deploy.sh re-runs itself after the pull updates it', () => {
   const real = fs.readFileSync(path.join(__dirname, '..', '..', 'deploy.sh'), 'utf8').replace(/^REPO=.*$/m, `REPO="${repo}"`);
   // v1: same script but marked OLD; v2: the real one marked NEW
   fs.writeFileSync(path.join(work, 'deploy.sh'), real.replace('set -euo pipefail', 'set -euo pipefail\necho "RUNNING-OLD"'), { mode: 0o755 });
-  fs.mkdirSync(path.join(work, 'frontend')); fs.mkdirSync(path.join(work, 'backend'));
+  for (const d of ['frontend', 'backend']) { fs.mkdirSync(path.join(work, d)); fs.writeFileSync(path.join(work, d, '.keep'), ''); }
   git(work, 'add', '-A'); git(work, 'commit', '-qm', 'v1'); git(work, 'push', '-q', 'origin', 'HEAD:main');
   git(T, 'clone', '-q', '-b', 'main', origin, repo);
   fs.writeFileSync(path.join(work, 'deploy.sh'), real.replace('set -euo pipefail', 'set -euo pipefail\necho "RUNNING-NEW"'), { mode: 0o755 });
