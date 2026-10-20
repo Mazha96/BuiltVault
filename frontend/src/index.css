@@ -1,0 +1,181 @@
+@import "tailwindcss";
+
+@theme {
+  --color-navy-950: #020718;
+  --color-navy-900: #060d2e;
+  --color-navy-800: #0a1550;
+  --color-navy-700: #0d1d6b;
+  --color-nblue: #00d4ff;
+  --color-nblue-dark: #00aacc;
+  --color-npink: #ff2d78;
+  --color-npink-dark: #cc1f5e;
+
+  --font-display: "Rajdhani", sans-serif;
+  --font-body: "Inter", sans-serif;
+
+  --shadow-nblue: 0 0 20px rgba(0,212,255,0.4);
+  --shadow-npink: 0 0 20px rgba(255,45,120,0.4);
+  --shadow-card: 0 4px 24px rgba(0,0,0,0.5);
+}
+
+@layer base {
+  body {
+    background-color: var(--color-navy-950);
+    color: #f3f4f6;
+    font-family: var(--font-body);
+  }
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+  }
+}
+
+@layer components {
+  .neon-blue {
+    color: var(--color-nblue);
+    filter: drop-shadow(0 0 8px rgba(0,212,255,0.8));
+  }
+  .neon-pink {
+    color: var(--color-npink);
+    filter: drop-shadow(0 0 8px rgba(255,45,120,0.8));
+  }
+  .btn-primary {
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    background-color: var(--color-nblue);
+    color: var(--color-navy-950);
+    font-weight: 600;
+    transition: all 0.15s;
+    box-shadow: var(--shadow-nblue);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .btn-primary:hover {
+    background-color: var(--color-nblue-dark);
+    box-shadow: none;
+  }
+  .btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .btn-secondary {
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-nblue);
+    color: var(--color-nblue);
+    font-weight: 600;
+    transition: all 0.15s;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .btn-secondary:hover {
+    background-color: var(--color-nblue);
+    color: var(--color-navy-950);
+  }
+  .btn-danger {
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-npink);
+    color: var(--color-npink);
+    font-weight: 600;
+    transition: all 0.15s;
+    cursor: pointer;
+  }
+  .btn-danger:hover {
+    background-color: var(--color-npink);
+    color: white;
+  }
+  .card {
+    background-color: var(--color-navy-900);
+    border-radius: 0.75rem;
+    border: 1px solid var(--color-navy-700);
+    box-shadow: var(--shadow-card);
+    padding: 1rem;
+  }
+  .input {
+    width: 100%;
+    background-color: var(--color-navy-800);
+    border: 1px solid var(--color-navy-700);
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    color: #f3f4f6;
+    outline: none;
+    transition: all 0.15s;
+    font-size: 0.875rem;
+  }
+  .input::placeholder { color: #6b7280; }
+  .input:focus {
+    border-color: var(--color-nblue);
+    box-shadow: 0 0 0 1px var(--color-nblue);
+  }
+  select.input { cursor: pointer; }
+  textarea.input { resize: none; }
+  .label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #9ca3af;
+    margin-bottom: 0.25rem;
+  }
+  .progress-bar {
+    height: 0.5rem;
+    border-radius: 9999px;
+    background-color: var(--color-navy-800);
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    border-radius: 9999px;
+    background: linear-gradient(90deg, var(--color-nblue), var(--color-npink));
+    transition: width 0.5s ease;
+  }
+  .tag {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 9999px;
+    border: 1px solid;
+    font-weight: 500;
+  }
+  .tag-blue {
+    border-color: var(--color-nblue);
+    color: var(--color-nblue);
+    background-color: rgba(0,212,255,0.1);
+  }
+  .tag-pink {
+    border-color: var(--color-npink);
+    color: var(--color-npink);
+    background-color: rgba(255,45,120,0.1);
+  }
+  .tag-gray {
+    border-color: #4b5563;
+    color: #9ca3af;
+    background-color: rgba(75,85,99,0.3);
+  }
+}
+
+.neon-line {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #00d4ff, #ff2d78, transparent);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--color-navy-900); }
+::-webkit-scrollbar-thumb { background: var(--color-navy-700); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,212,255,0.3); }
+
+/* Dark inputs/selects globally */
+input, select, textarea {
+  color-scheme: dark;
+  background: #0a0e1a;
+  color: #e2e8f0;
+  border: 1px solid rgba(0,212,255,0.2);
+  border-radius: 8px;
+}
+select option {
+  background: #0d1224;
+  color: #e2e8f0;
+}
