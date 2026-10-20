@@ -62,16 +62,37 @@ router.patch('/me', auth, (req, res) => {
 });
 
 // GET /api/users/:id — public profile
-router.get('/:id', auth, (req, res) => {
-  const user = db.prepare('SELECT id, username, display_name, avatar_url, bio, created_at FROM users WHERE id=?').get(req.params.id);
+// GET /api/users/:id — public profile, works signed-out
+// :id can be a Clerk user ID OR a username (prefixed with @)
+router.get('/:id', async (req, res) => {
+  const param = req.params.id;
+
+  // Support /u/:username by looking up by username if param doesn't look like a Clerk ID
+  const user = param.startsWith('user_')
+    ? db.prepare('SELECT id, username, display_name, avatar_url, bio, created_at FROM users WHERE id=?').get(param)
+    : db.prepare('SELECT id, username, display_name, avatar_url, bio, created_at FROM users WHERE username=?').get(param);
+
   if (!user) return res.status(404).json({ error: 'User not found' });
 
-  const followers = db.prepare('SELECT COUNT(*) as c FROM follows_users WHERE following_id=?').get(req.params.id).c;
-  const following = db.prepare('SELECT COUNT(*) as c FROM follows_users WHERE follower_id=?').get(req.params.id).c;
-  const isFollowing = !!db.prepare('SELECT 1 FROM follows_users WHERE follower_id=? AND following_id=?').get(req.user.id, req.params.id);
+  const followers = db.prepare('SELECT COUNT(*) as c FROM follows_users WHERE following_id=?').get(user.id).c;
+  const following = db.prepare('SELECT COUNT(*) as c FROM follows_users WHERE follower_id=?').get(user.id).c;
+
+  // Check if the viewer is following (optional auth)
+  let isFollowing = false;
+  try {
+    const { verifyToken } = require('@clerk/express');
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (token) {
+      const payload = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY });
+      const viewerId = payload?.sub;
+      if (viewerId) {
+        isFollowing = !!db.prepare('SELECT 1 FROM follows_users WHERE follower_id=? AND following_id=?').get(viewerId, user.id);
+      }
+    }
+  } catch {}
 
   const projects = db.prepare(`
-    SELECT p.*, 
+    SELECT p.*,
       COALESCE(SUM(pt.points),0) as total_points,
       (SELECT COUNT(*) FROM follows_projects fp WHERE fp.project_id=p.id) as followers_count
     FROM projects p
@@ -79,7 +100,7 @@ router.get('/:id', auth, (req, res) => {
     WHERE p.user_id=? AND p.is_public=1
     GROUP BY p.id
     ORDER BY p.updated_at DESC
-  `).all(req.params.id);
+  `).all(user.id);
 
   res.json({ ...user, stats: { followers, following, projects: projects.length }, isFollowing, projects });
 });

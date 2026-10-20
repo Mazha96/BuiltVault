@@ -50,7 +50,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
               <Route path="/inventory/import" element={<Protected><ImportInventory /></Protected>} />
               <Route path="/feed" element={<Protected><Feed /></Protected>} />
               <Route path="/profile" element={<Protected><MyProfile /></Protected>} />
-              <Route path="/users/:id" element={<Protected><UserProfile /></Protected>} />
+              <Route path="/users/:id" element={<UserProfile />} />
+              <Route path="/u/:id" element={<UserProfile />} />
               <Route path="/community" element={<Protected><Community /></Protected>} />
               <Route path="/community/:id" element={<Protected><CommunityPost /></Protected>} />
               <Route path="/notifications" element={<Protected><Notifications /></Protected>} />
