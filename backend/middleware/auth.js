@@ -44,6 +44,7 @@ function uniqueUsername(base, clerkId) {
 }
 
 module.exports = async (req, res, next) => {
+  let clerkId;
   try {
     const header = req.headers.authorization;
     if (!header || !header.startsWith('Bearer ')) {
@@ -51,13 +52,15 @@ module.exports = async (req, res, next) => {
     }
     const token = header.split(' ')[1];
     const payload = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY });
-    const clerkId = payload.sub;
+    clerkId = payload.sub;
     const profile = await fetchClerkProfile(clerkId, payload);
 
     const exists = db.prepare('SELECT 1 FROM users WHERE id=?').get(clerkId);
     if (!exists) {
       db.prepare(`INSERT INTO users (id, username, email, avatar_url, display_name, password_hash) VALUES (?,?,?,?,?,?)`)
-        .run(clerkId, uniqueUsername(profile.username, clerkId), profile.email, profile.avatar, profile.username, 'clerk_managed');
+        .run(clerkId, uniqueUsername(profile.username, clerkId),
+          db.prepare('SELECT 1 FROM users WHERE email=?').get(profile.email) ? `${clerkId}@clerk.user` : profile.email,
+          profile.avatar, profile.username, 'clerk_managed');
     } else if (!profile.fallback) {
       // Keep the stored username if the Clerk one is taken by someone else (UNIQUE column).
       const taken = db.prepare('SELECT 1 FROM users WHERE username=? AND id<>?').get(profile.username, clerkId);
@@ -70,10 +73,11 @@ module.exports = async (req, res, next) => {
         .run(taken ? 1 : 0, profile.username, profile.email, clerkId, profile.email, profile.avatar, profile.username, clerkId);
     }
 
-    req.user = { id: clerkId };
-    next();
   } catch (err) {
     console.error('Auth error:', err.message, '| Path:', req.path);
     return res.status(401).json({ error: 'Invalid token' });
   }
+  // Outside the try: an error in the route itself must not be reported as "Invalid token".
+  req.user = { id: clerkId };
+  next();
 };
