@@ -15,7 +15,12 @@ const storage = multer.diskStorage({
   destination: process.env.UPLOAD_DIR || './uploads',
   filename: (req, file, cb) => cb(null, `${uuid()}${path.extname(file.originalname)}`)
 });
-const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
+const IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.heif'];
+const upload = multer({
+  storage,
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => cb(null, IMAGE_EXT.includes(path.extname(file.originalname).toLowerCase())),
+});
 
 function isMod(userId) {
   const u = db.prepare('SELECT role FROM users WHERE id=?').get(userId);

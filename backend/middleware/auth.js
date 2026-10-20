@@ -10,7 +10,20 @@ function deriveFromPayload(payload) {
   return { email, username, avatar };
 }
 
+// Clerk's getUser is a network call; doing it on every API request is slow and can hit
+// Clerk rate limits. Profiles rarely change, so cache them for 10 minutes per user.
+const PROFILE_TTL_MS = 10 * 60 * 1000;
+const profileCache = new Map();
+
 async function fetchClerkProfile(clerkId, payload) {
+  const hit = profileCache.get(clerkId);
+  if (hit && Date.now() - hit.at < PROFILE_TTL_MS) return hit.profile;
+  const profile = await fetchClerkProfileUncached(clerkId, payload);
+  profileCache.set(clerkId, { at: Date.now(), profile });
+  return profile;
+}
+
+async function fetchClerkProfileUncached(clerkId, payload) {
   try {
     const user = await clerkUsers.getUser(clerkId);
     const email = user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress || payload?.email || `${clerkId}@clerk.user`;
@@ -49,7 +62,7 @@ module.exports = async (req, res, next) => {
     req.user = { id: clerkId };
     next();
   } catch (err) {
-    console.error('Auth error:', err.message, '| Path:', req.path, '| Header:', req.headers.authorization?.slice(0, 30));
-    return res.status(401).json({ error: 'Invalid token', detail: err.message });
+    console.error('Auth error:', err.message, '| Path:', req.path);
+    return res.status(401).json({ error: 'Invalid token' });
   }
 };

@@ -26,6 +26,7 @@ router.post('/:projectId', auth, upload.single('file'), (req, res) => {
   const ext = path.extname(req.file.originalname).toLowerCase();
   let file_type = 'other';
   if (['.jpg','.jpeg','.png','.gif','.webp'].includes(ext)) file_type = 'image';
+  else if (['.mp4','.webm','.mov','.m4v'].includes(ext)) file_type = 'video';
   else if (['.pdf'].includes(ext)) file_type = 'pdf';
   else if (['.stl','.obj','.3mf'].includes(ext)) file_type = '3d';
   else if (['.dxf','.svg'].includes(ext)) file_type = 'blueprint';

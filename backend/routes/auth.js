@@ -7,6 +7,13 @@ require('dotenv').config();
 
 const router = express.Router();
 
+// Legacy pre-Clerk password routes are disabled. Clerk handles sign-up, sign-in and recovery.
+const gone = (req, res) => res.status(410).json({ error: 'Use Clerk sign-in' });
+router.post('/register', gone);
+router.post('/login', gone);
+router.post('/recovery-question', gone);
+router.post('/reset-password', gone);
+
 function validatePassword(password) {
   const errors = [];
   if (!password || password.length < 12) errors.push('At least 12 characters');

@@ -98,17 +98,22 @@ function calcStreak(projectId, userId) {
 // POST /api/timelogs/:projectId — log a session
 router.post('/:projectId', auth, (req, res) => {
   const { duration_minutes, notes, logged_at, focus_session } = req.body;
-  if (!duration_minutes || duration_minutes < 1) return res.status(400).json({ error: 'Duration required (min 1 minute)' });
+  const minutes = Number(duration_minutes);
+  if (!Number.isInteger(minutes) || minutes < 1 || minutes > 24 * 60) return res.status(400).json({ error: 'Duration must be a whole number of minutes (1 to 1440)' });
+  if (logged_at !== undefined && (typeof logged_at !== 'string' || Number.isNaN(Date.parse(logged_at)) || Date.parse(logged_at) > Date.now() + 86400000)) {
+    return res.status(400).json({ error: 'logged_at must be an ISO date, not in the future' });
+  }
 
   const project = db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.projectId);
   if (!project) return res.status(404).json({ error: 'Project not found' });
-  if (project.user_id !== req.user.id && !project.is_public) return res.status(403).json({ error: 'No access' });
+  // Only the project owner logs work time on it (visitors can still see public stats).
+  if (project.user_id !== req.user.id) return res.status(403).json({ error: 'Only the owner can log time' });
 
   const id = uuid();
-  const date = logged_at || new Date().toISOString();
+  const date = logged_at ? new Date(logged_at).toISOString() : new Date().toISOString();
   db.prepare(`INSERT INTO time_logs (id, project_id, user_id, duration_minutes, notes, logged_at, focus_session)
     VALUES (?,?,?,?,?,?,?)`)
-    .run(id, req.params.projectId, req.user.id, duration_minutes, notes || '', date, focus_session ? 1 : 0);
+    .run(id, req.params.projectId, req.user.id, minutes, String(notes || '').slice(0, 1000), date, focus_session ? 1 : 0);
 
   // Recalculate streak and check for new milestone achievements
   const streak = calcStreak(req.params.projectId, req.user.id);
@@ -142,6 +147,8 @@ router.delete('/:projectId/:logId', auth, (req, res) => {
 
 // GET /api/timelogs/:projectId/public — public stats (no auth, for project detail page visitors)
 router.get('/:projectId/public', (req, res) => {
+  const project = db.prepare('SELECT is_public FROM projects WHERE id=?').get(req.params.projectId);
+  if (!project || !project.is_public) return res.status(404).json({ error: 'Not found' });
   const logs = db.prepare(`
     SELECT t.duration_minutes, t.logged_at, u.display_name, u.username
     FROM time_logs t JOIN users u ON t.user_id = u.id
@@ -150,7 +157,7 @@ router.get('/:projectId/public', (req, res) => {
   `).all(req.params.projectId);
 
   const totalMinutes = logs.reduce((s, l) => s + l.duration_minutes, 0);
-  const days = [...new Set(logs.map(l => l.logged_at.split('T')[0]))];
+  const days = [...new Set(logs.map(l => String(l.logged_at).split('T')[0]))];
 
   res.json({ logs, totalMinutes, sessionCount: logs.length, activeDays: days.length });
 });
