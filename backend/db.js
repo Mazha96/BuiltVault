@@ -1,8 +1,8 @@
 const Database = require('better-sqlite3');
 const path = require('path');
-require('dotenv').config();
+const { DB_PATH } = require('./lib/paths');
 
-const db = new Database(process.env.DB_PATH || './buildvault.db');
+const db = new Database(DB_PATH);
 
 db.exec(`
   PRAGMA journal_mode=WAL;
@@ -255,6 +255,9 @@ addColumn('users', 'github_url', "TEXT DEFAULT ''");
 addColumn('users', 'website_url', "TEXT DEFAULT ''");
 addColumn('users', 'resume_url', "TEXT DEFAULT ''");
 addColumn('users', 'linkedin_url', "TEXT DEFAULT ''");
+
+// How much of each BOM line was actually taken from inventory when the project was completed
+addColumn('bom_items', 'deducted_qty', 'REAL DEFAULT 0');
 
 // Proof links on each project
 addColumn('projects', 'repo_url', "TEXT DEFAULT ''");

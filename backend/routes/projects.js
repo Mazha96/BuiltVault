@@ -101,43 +101,49 @@ router.put('/:id', auth, (req, res) => {
   if (!project) return res.status(404).json({ error: 'Not found' });
   const { title, description, status, is_public, category, cover_url, tags } = req.body;
 
-  // Proof links shown as buttons on the project page (code repo, demo video)
-  for (const f of PROJECT_LINKS) {
+  // Validate the portfolio fields before writing anything, so a 400 never leaves a partial update.
+  const extra = {};
+  for (const f of PROJECT_LINKS) {   // proof links shown as buttons (code repo, demo video)
     if (req.body[f] === undefined) continue;
     const v = cleanUrl(req.body[f]);
     if (v === null) return res.status(400).json({ error: `${f} must be a valid http(s) link` });
-    db.prepare(`UPDATE projects SET ${f}=? WHERE id=?`).run(v, req.params.id);
+    extra[f] = v;
   }
-
-  // Featured projects are pinned to the top of the public profile (max 6).
-  if (req.body.is_featured !== undefined) {
+  if (req.body.is_featured !== undefined) {   // pinned to the top of the public profile (max 6)
     const want = req.body.is_featured ? 1 : 0;
     if (want && !project.is_featured) {
       const count = db.prepare('SELECT COUNT(*) AS c FROM projects WHERE user_id=? AND is_featured=1').get(req.user.id).c;
       if (count >= 6) return res.status(400).json({ error: 'You can feature up to 6 projects' });
     }
-    db.prepare('UPDATE projects SET is_featured=? WHERE id=?').run(want, req.params.id);
+    extra.is_featured = want;
   }
-  if (req.body.featured_order !== undefined) {
-    db.prepare('UPDATE projects SET featured_order=? WHERE id=?').run(Number(req.body.featured_order) || 0, req.params.id);
-  }
+  if (req.body.featured_order !== undefined) extra.featured_order = Number(req.body.featured_order) || 0;
+  db.transaction(() => {
+    for (const [col, val] of Object.entries(extra)) db.prepare(`UPDATE projects SET ${col}=? WHERE id=?`).run(val, req.params.id);
+  })();
 
   let statusChanged = false;
   // When marking complete: deduct BOM quantities from inventory stock
   if (status && status !== project.status) {
     statusChanged = true;
-    // Marking complete consumes BOM parts from inventory; leaving 'complete' gives them back,
-    // so toggling the status back and forth never deducts the same parts twice.
-    const sign = status === 'complete' ? -1 : project.status === 'complete' ? 1 : 0;
-    if (sign !== 0) {
-      const bomItems = db.prepare('SELECT * FROM bom_items WHERE project_id=?').all(req.params.id);
+    // Marking complete takes BOM parts out of inventory and records exactly how much was taken
+    // (stock can't go below 0). Leaving 'complete' puts back only what was recorded, so toggling
+    // the status, or editing the BOM while complete, never creates or loses stock.
+    const bomItems = db.prepare('SELECT * FROM bom_items WHERE project_id=? AND part_id IS NOT NULL').all(req.params.id);
+    db.transaction(() => {
       for (const item of bomItems) {
-        if (item.part_id) {
-          db.prepare('UPDATE inventory_parts SET stock_qty = MAX(0, stock_qty + ?) WHERE id=? AND user_id=?')
-            .run(sign * (item.qty || 0), item.part_id, req.user.id);
+        const part = db.prepare('SELECT stock_qty FROM inventory_parts WHERE id=? AND user_id=?').get(item.part_id, req.user.id);
+        if (!part) continue;
+        if (status === 'complete') {
+          const take = Math.min(part.stock_qty || 0, item.qty || 0);
+          db.prepare('UPDATE inventory_parts SET stock_qty = stock_qty - ? WHERE id=?').run(take, item.part_id);
+          db.prepare('UPDATE bom_items SET deducted_qty = deducted_qty + ? WHERE id=?').run(take, item.id);
+        } else if (project.status === 'complete' && item.deducted_qty) {
+          db.prepare('UPDATE inventory_parts SET stock_qty = stock_qty + ? WHERE id=?').run(item.deducted_qty, item.part_id);
+          db.prepare('UPDATE bom_items SET deducted_qty = 0 WHERE id=?').run(item.id);
         }
       }
-    }
+    })();
   }
 
   db.prepare(`UPDATE projects SET title=COALESCE(?,title), description=COALESCE(?,description),

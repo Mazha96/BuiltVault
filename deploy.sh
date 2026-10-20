@@ -6,12 +6,29 @@
 
 set -euo pipefail
 
+BEFORE=""
+rollback_hint() {
+  echo "❌ Deploy stopped at line $1."
+  if [ -n "$BEFORE" ]; then
+    echo "   To roll back the code: cd $REPO && git reset --hard $BEFORE && (cd frontend && npm run build) && systemctl restart buildvault"
+  fi
+  echo "   Database backups: $BACKUP_DIR"
+}
+trap 'rollback_hint $LINENO' ERR
+
 REPO="/root/.openclaw/workspace/buildvault"
 DB="$REPO/backend/buildvault.db"
 BACKUP_DIR="$REPO/backend/db_backups"
 TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
 
 cd "$REPO"
+
+# 0. The backend must run as the systemd service; check before changing anything.
+if ! systemctl cat buildvault.service >/dev/null 2>&1; then
+  echo "❌ systemd service 'buildvault' is not installed, so the new code could not be restarted."
+  echo "   Nothing was changed. Set it up first (README: 'One-time service setup'), then run ./deploy.sh again."
+  exit 1
+fi
 
 # 1. Abort if working tree is dirty (server edits must be committed first)
 if ! git diff --quiet || ! git diff --cached --quiet; then
@@ -33,7 +50,7 @@ if [ -f "$DB" ]; then
 fi
 
 # 4. Install dependencies only when a lockfile changed
-changed() { [ "$BEFORE" != "$AFTER" ] && git diff --name-only "$BEFORE" "$AFTER" | grep -qx "$1"; }
+changed() { [ "$BEFORE" != "$AFTER" ] && ! git diff --quiet "$BEFORE" "$AFTER" -- "$1"; }
 if changed backend/package-lock.json; then echo "📦 Backend deps changed, installing..."; (cd backend && npm ci --omit=dev); fi
 if changed frontend/package-lock.json; then echo "📦 Frontend deps changed, installing..."; (cd frontend && npm ci); fi
 
@@ -41,21 +58,25 @@ if changed frontend/package-lock.json; then echo "📦 Frontend deps changed, in
 echo "🔨 Building frontend..."
 (cd frontend && npm run build)
 
-# 6. Restart backend (systemd service; falls back to pm2 if the service isn't installed)
+# 6. Restart backend as the systemd service. A node process started some other way (by hand or by
+#    an agent) would keep holding port 3001 and the new code would never run, so stop it first.
 echo "🔄 Restarting backend..."
-if systemctl list-unit-files buildvault.service >/dev/null 2>&1 && systemctl cat buildvault.service >/dev/null 2>&1; then
-  systemctl restart buildvault
-else
-  pm2 restart buildvault
+SERVICE_PID=$(systemctl show -p MainPID --value buildvault || echo 0)
+PORT_PID=$(ss -tlnpH 'sport = :3001' 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1 || true)
+if [ -n "${PORT_PID:-}" ] && [ "$PORT_PID" != "$SERVICE_PID" ]; then
+  echo "   Stopping stray node process $PORT_PID on :3001"
+  kill "$PORT_PID" || true
+  sleep 1
 fi
+systemctl restart buildvault
 
-# 7. Health check
+# 7. Health check: the running process must report the commit we just deployed
 sleep 2
-if curl -fsS http://127.0.0.1:3001/api/health >/dev/null && curl -fsS https://mazhagarage.cloud/api/projects/public >/dev/null; then
+LIVE=$(curl -fsS http://127.0.0.1:3001/api/health | grep -oP '"version":"\K[^"]+' || echo none)
+if [ "$LIVE" = "$AFTER" ] && curl -fsS https://mazhagarage.cloud/api/projects/public >/dev/null; then
   echo "🚀 Done! $(git log --oneline -1) is live at https://mazhagarage.cloud"
 else
-  echo "⚠️  Health check failed. To roll back the code:"
-  echo "    cd $REPO && git reset --hard $BEFORE && (cd frontend && npm run build) && systemctl restart buildvault"
-  echo "    DB backup from just before this deploy: $BACKUP_DIR/buildvault_$TIMESTAMP.db"
+  echo "⚠️  Health check failed (running version: $LIVE, expected: $AFTER)."
+  rollback_hint $LINENO
   exit 1
 fi

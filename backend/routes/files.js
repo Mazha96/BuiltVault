@@ -5,10 +5,10 @@ const { v4: uuid } = require('uuid');
 const db = require('../db');
 const auth = require('../middleware/auth');
 const { logActivity } = require('../services/activity');
-require('dotenv').config();
+const { UPLOAD_DIR } = require('../lib/paths');
 
 const router = express.Router();
-const uploadDir = process.env.UPLOAD_DIR || './uploads';
+const uploadDir = UPLOAD_DIR;
 
 const storage = multer.diskStorage({
   destination: uploadDir,

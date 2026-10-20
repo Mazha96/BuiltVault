@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuid } = require('uuid');
 const db = require('../db');
-require('dotenv').config();
+require('../lib/paths');
 
 const router = express.Router();
 

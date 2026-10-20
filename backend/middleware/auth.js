@@ -1,7 +1,7 @@
 const { verifyToken } = require('@clerk/express');
 const { users: clerkUsers } = require('@clerk/clerk-sdk-node');
 const db = require('../db');
-require('dotenv').config();
+require('../lib/paths');
 
 function deriveFromPayload(payload) {
   const email = payload?.email_addresses?.[0]?.email_address || payload?.email || `${payload.sub}@clerk.user`;
@@ -19,7 +19,7 @@ async function fetchClerkProfile(clerkId, payload) {
   const hit = profileCache.get(clerkId);
   if (hit && Date.now() - hit.at < PROFILE_TTL_MS) return hit.profile;
   const profile = await fetchClerkProfileUncached(clerkId, payload);
-  profileCache.set(clerkId, { at: Date.now(), profile });
+  if (!profile.fallback) profileCache.set(clerkId, { at: Date.now(), profile });
   return profile;
 }
 
@@ -32,8 +32,15 @@ async function fetchClerkProfileUncached(clerkId, payload) {
     return { email, username, avatar };
   } catch (err) {
     console.error('Clerk fetch failed:', err.message);
-    return deriveFromPayload(payload);
+    return { ...deriveFromPayload(payload), fallback: true };
   }
+}
+
+// Usernames are UNIQUE; if the derived one is taken, add a short suffix from the Clerk id.
+function uniqueUsername(base, clerkId) {
+  const clean = String(base || '').trim() || clerkId.slice(5, 13);
+  if (!db.prepare('SELECT 1 FROM users WHERE username=?').get(clean)) return clean;
+  return `${clean}-${clerkId.slice(-4)}`;
 }
 
 module.exports = async (req, res, next) => {
@@ -47,17 +54,21 @@ module.exports = async (req, res, next) => {
     const clerkId = payload.sub;
     const profile = await fetchClerkProfile(clerkId, payload);
 
-    db.prepare(`INSERT INTO users (id, username, email, avatar_url, display_name, password_hash)
-      VALUES (?,?,?,?,?,?)
-      ON CONFLICT(id) DO UPDATE SET
-        username=excluded.username,
-        email=excluded.email,
-        avatar_url=excluded.avatar_url,
-        display_name=CASE 
-          WHEN users.display_name IS NULL OR users.display_name='' OR users.display_name=users.id
-          THEN excluded.display_name 
-          ELSE users.display_name 
-        END`).run(clerkId, profile.username, profile.email, profile.avatar, profile.username, 'clerk_managed');
+    const exists = db.prepare('SELECT 1 FROM users WHERE id=?').get(clerkId);
+    if (!exists) {
+      db.prepare(`INSERT INTO users (id, username, email, avatar_url, display_name, password_hash) VALUES (?,?,?,?,?,?)`)
+        .run(clerkId, uniqueUsername(profile.username, clerkId), profile.email, profile.avatar, profile.username, 'clerk_managed');
+    } else if (!profile.fallback) {
+      // Keep the stored username if the Clerk one is taken by someone else (UNIQUE column).
+      const taken = db.prepare('SELECT 1 FROM users WHERE username=? AND id<>?').get(profile.username, clerkId);
+      db.prepare(`UPDATE users SET
+          username = CASE WHEN ? THEN username ELSE ? END,
+          email = CASE WHEN EXISTS (SELECT 1 FROM users WHERE email=? AND id<>?) THEN email ELSE ? END,
+          avatar_url = ?,
+          display_name = CASE WHEN display_name IS NULL OR display_name='' OR display_name=id THEN ? ELSE display_name END
+        WHERE id=?`)
+        .run(taken ? 1 : 0, profile.username, profile.email, clerkId, profile.email, profile.avatar, profile.username, clerkId);
+    }
 
     req.user = { id: clerkId };
     next();

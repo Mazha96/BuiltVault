@@ -34,8 +34,8 @@ router.get('/me', auth, (req, res) => {
     FROM follows_projects f
     JOIN projects p ON f.project_id = p.id
     JOIN users u ON p.user_id = u.id
-    WHERE f.user_id = ?
-  `).all(req.user.id);
+    WHERE f.user_id = ? AND (p.is_public = 1 OR p.user_id = ?)
+  `).all(req.user.id, req.user.id);
 
   res.json({
     ...user,
@@ -52,22 +52,25 @@ const LINK_FIELDS = ['github_url', 'website_url', 'resume_url', 'linkedin_url'];
 // PATCH /api/users/me — update display name, bio, headline, location and links
 router.patch('/me', auth, (req, res) => {
   const { display_name, bio, headline, location } = req.body;
+  // Validate everything first, then write in one transaction: a 400 never leaves a half-saved profile.
+  const updates = {};
   for (const f of LINK_FIELDS) {
     if (req.body[f] === undefined) continue;
     const v = cleanUrl(req.body[f]);
     if (v === null) return res.status(400).json({ error: `${f} must be a valid http(s) link` });
-    db.prepare(`UPDATE users SET ${f}=? WHERE id=?`).run(v, req.user.id);
+    updates[f] = v;
   }
-  if (headline !== undefined) db.prepare('UPDATE users SET headline=? WHERE id=?').run(String(headline).trim().slice(0, 120), req.user.id);
-  if (location !== undefined) db.prepare('UPDATE users SET location=? WHERE id=?').run(String(location).trim().slice(0, 60), req.user.id);
   if (display_name !== undefined) {
-    const value = display_name.trim();
+    const value = String(display_name).trim();
     if (value.length < 2 || value.length > 40) return res.status(400).json({ error: 'Display name must be 2-40 characters' });
-    db.prepare('UPDATE users SET display_name=? WHERE id=?').run(value, req.user.id);
+    updates.display_name = value;
   }
-  if (bio !== undefined) {
-    db.prepare('UPDATE users SET bio=? WHERE id=?').run(bio.slice(0, 280), req.user.id);
-  }
+  if (headline !== undefined) updates.headline = String(headline).trim().slice(0, 120);
+  if (location !== undefined) updates.location = String(location).trim().slice(0, 60);
+  if (bio !== undefined) updates.bio = String(bio).slice(0, 280);
+  db.transaction(() => {
+    for (const [col, val] of Object.entries(updates)) db.prepare(`UPDATE users SET ${col}=? WHERE id=?`).run(val, req.user.id);
+  })();
   const user = db.prepare('SELECT id, username, email, bio, avatar_url, created_at, display_name, headline, location, github_url, website_url, resume_url, linkedin_url FROM users WHERE id=?').get(req.user.id);
   res.json(user);
 });
