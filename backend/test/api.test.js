@@ -167,3 +167,12 @@ test('signed-out requests to auth-only routes get 401 JSON, not a crash', async 
   assert.equal(r.status, 401);
   assert.equal(r.body.detail, undefined, 'no internal error detail leaked');
 });
+
+test('project repo and demo links: http(s) only, returned publicly', async () => {
+  const ok = await request(app).put(`/api/projects/${pub}`).set(A).send({ repo_url: 'github.com/Mazha96/ParkShift', demo_url: 'https://youtu.be/abc' });
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  const r = await request(app).get(`/api/projects/${pub}`);
+  assert.equal(r.body.repo_url, 'https://github.com/Mazha96/ParkShift');
+  assert.equal(r.body.demo_url, 'https://youtu.be/abc');
+  assert.equal((await request(app).put(`/api/projects/${pub}`).set(A).send({ demo_url: 'javascript:alert(1)' })).status, 400);
+});

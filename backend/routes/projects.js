@@ -4,6 +4,8 @@ const { verifyToken } = require('@clerk/express');
 const db = require('../db');
 const auth = require('../middleware/auth');
 const { logActivity } = require('../services/activity');
+const { cleanUrl } = require('../lib/url');
+const PROJECT_LINKS = ['repo_url', 'demo_url'];
 
 const router = express.Router();
 
@@ -98,6 +100,14 @@ router.put('/:id', auth, (req, res) => {
   const project = db.prepare('SELECT * FROM projects WHERE id=? AND user_id=?').get(req.params.id, req.user.id);
   if (!project) return res.status(404).json({ error: 'Not found' });
   const { title, description, status, is_public, category, cover_url, tags } = req.body;
+
+  // Proof links shown as buttons on the project page (code repo, demo video)
+  for (const f of PROJECT_LINKS) {
+    if (req.body[f] === undefined) continue;
+    const v = cleanUrl(req.body[f]);
+    if (v === null) return res.status(400).json({ error: `${f} must be a valid http(s) link` });
+    db.prepare(`UPDATE projects SET ${f}=? WHERE id=?`).run(v, req.params.id);
+  }
 
   // Featured projects are pinned to the top of the public profile (max 6).
   if (req.body.is_featured !== undefined) {

@@ -256,6 +256,10 @@ addColumn('users', 'website_url', "TEXT DEFAULT ''");
 addColumn('users', 'resume_url', "TEXT DEFAULT ''");
 addColumn('users', 'linkedin_url', "TEXT DEFAULT ''");
 
+// Proof links on each project
+addColumn('projects', 'repo_url', "TEXT DEFAULT ''");
+addColumn('projects', 'demo_url', "TEXT DEFAULT ''");
+
 // Featured (pinned) projects on the public profile
 addColumn('projects', 'is_featured', 'INTEGER DEFAULT 0');
 addColumn('projects', 'featured_order', 'INTEGER DEFAULT 0');

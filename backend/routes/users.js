@@ -46,15 +46,7 @@ router.get('/me', auth, (req, res) => {
   });
 });
 
-// Only http(s) links are stored, so a profile can't carry a javascript: URL into an href.
-function cleanUrl(v) {
-  const s = String(v || '').trim();
-  if (!s) return '';
-  try {
-    const u = new URL(/^https?:\/\//i.test(s) ? s : `https://${s}`);
-    return ['http:', 'https:'].includes(u.protocol) ? u.toString().slice(0, 300) : null;
-  } catch { return null; }
-}
+const { cleanUrl } = require('../lib/url');
 const LINK_FIELDS = ['github_url', 'website_url', 'resume_url', 'linkedin_url'];
 
 // PATCH /api/users/me — update display name, bio, headline, location and links
