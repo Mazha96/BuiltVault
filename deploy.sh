@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-BEFORE=""
+BEFORE="${DEPLOY_BEFORE:-}"
 rollback_hint() {
   echo "❌ Deploy stopped at line $1."
   if [ -n "$BEFORE" ]; then
@@ -37,9 +37,17 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
 fi
 
 # 2. Pull latest from GitHub (fast-forward only)
-BEFORE=$(git rev-parse HEAD)
-echo "⬇️  Pulling latest from GitHub..."
-git pull --ff-only origin main
+if [ -z "${DEPLOY_BEFORE:-}" ]; then
+  BEFORE=$(git rev-parse HEAD)
+  echo "⬇️  Pulling latest from GitHub..."
+  git pull --ff-only origin main
+  # bash keeps reading the copy of this script it started with; if the pull changed it,
+  # restart with the new version (remembering where we came from).
+  if ! git diff --quiet "$BEFORE" HEAD -- deploy.sh; then
+    echo "🔁 deploy.sh changed, re-running the new version..."
+    DEPLOY_BEFORE="$BEFORE" exec bash "$REPO/deploy.sh"
+  fi
+fi
 AFTER=$(git rev-parse HEAD)
 
 # 3. Back up the DB with SQLite's online backup (safe while the app is running), keep newest 20
@@ -49,10 +57,11 @@ if [ -f "$DB" ]; then
   ls -t "$BACKUP_DIR"/buildvault_*.db | tail -n +21 | xargs -r rm --
 fi
 
-# 4. Install dependencies only when a lockfile changed
+# 4. Install dependencies only when a lockfile changed. 'npm install' updates node_modules in place
+#    (npm ci would delete it first, under the running app).
 changed() { [ "$BEFORE" != "$AFTER" ] && ! git diff --quiet "$BEFORE" "$AFTER" -- "$1"; }
-if changed backend/package-lock.json; then echo "📦 Backend deps changed, installing..."; (cd backend && npm ci --omit=dev); fi
-if changed frontend/package-lock.json; then echo "📦 Frontend deps changed, installing..."; (cd frontend && npm ci); fi
+if changed backend/package-lock.json; then echo "📦 Backend deps changed, installing..."; (cd backend && npm install --omit=dev --no-audit --no-fund); fi
+if changed frontend/package-lock.json; then echo "📦 Frontend deps changed, installing..."; (cd frontend && npm install --no-audit --no-fund); fi
 
 # 5. Build frontend
 echo "🔨 Building frontend..."

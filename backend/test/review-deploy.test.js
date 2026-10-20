@@ -53,8 +53,8 @@ function harness({ systemd, pm2Ok, extraFiles = 0, liveVersion = null }) {
 test('covers: systemd path pulls, installs backend deps on lockfile change, builds, restarts, health-checks', () => {
   const r = harness({ systemd: true });
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(r.calls, /npm ci --omit=dev/);
-  assert.doesNotMatch(r.calls, /npm ci\n/, 'frontend lockfile unchanged, no frontend install');
+  assert.match(r.calls, /npm install --omit=dev/);
+  assert.doesNotMatch(r.calls, /npm install --no-audit/, 'frontend lockfile unchanged, no frontend install');
   assert.match(r.calls, /npm run build/);
   assert.match(r.calls, /systemctl restart buildvault/);
   assert.match(r.calls, /curl .*127\.0\.0\.1:3001\/api\/health/);
@@ -75,5 +75,5 @@ test('health check fails when the old process is still the one answering', () =>
 
 test('changed() under pipefail (fixed) misses a changed lockfile when the diff lists many files (grep -q SIGPIPE)', () => {
   const r = harness({ systemd: true, extraFiles: 4000 });
-  assert.match(r.calls, /npm ci --omit=dev/, 'backend/package-lock.json changed but npm ci was skipped');
+  assert.match(r.calls, /npm install --omit=dev/, 'backend/package-lock.json changed but npm ci was skipped');
 });

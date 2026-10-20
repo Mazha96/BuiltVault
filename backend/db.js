@@ -258,6 +258,9 @@ addColumn('users', 'linkedin_url', "TEXT DEFAULT ''");
 
 // How much of each BOM line was actually taken from inventory when the project was completed
 addColumn('bom_items', 'deducted_qty', 'REAL DEFAULT 0');
+// 1 once a completion was recorded with deducted_qty. Projects completed by the older code have 0,
+// so reopening them restores the full BOM qty, which is what the old code took out.
+addColumn('projects', 'stock_ledger', 'INTEGER DEFAULT 0');
 
 // Proof links on each project
 addColumn('projects', 'repo_url', "TEXT DEFAULT ''");

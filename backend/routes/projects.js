@@ -138,11 +138,14 @@ router.put('/:id', auth, (req, res) => {
           const take = Math.min(part.stock_qty || 0, item.qty || 0);
           db.prepare('UPDATE inventory_parts SET stock_qty = stock_qty - ? WHERE id=?').run(take, item.part_id);
           db.prepare('UPDATE bom_items SET deducted_qty = deducted_qty + ? WHERE id=?').run(take, item.id);
-        } else if (project.status === 'complete' && item.deducted_qty) {
-          db.prepare('UPDATE inventory_parts SET stock_qty = stock_qty + ? WHERE id=?').run(item.deducted_qty, item.part_id);
+        } else if (project.status === 'complete') {
+          const giveBack = project.stock_ledger ? (item.deducted_qty || 0) : (item.qty || 0);
+          if (giveBack) db.prepare('UPDATE inventory_parts SET stock_qty = stock_qty + ? WHERE id=?').run(giveBack, item.part_id);
           db.prepare('UPDATE bom_items SET deducted_qty = 0 WHERE id=?').run(item.id);
         }
       }
+      if (status === 'complete') db.prepare('UPDATE projects SET stock_ledger=1 WHERE id=?').run(req.params.id);
+      else if (project.status === 'complete') db.prepare('UPDATE projects SET stock_ledger=0 WHERE id=?').run(req.params.id);
     })();
   }
 
