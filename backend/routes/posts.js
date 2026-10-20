@@ -1,7 +1,17 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
+const { verifyToken } = require('@clerk/express');
 const db = require('../db');
 const auth = require('../middleware/auth');
+
+async function getViewerId(req) {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return null;
+    const payload = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY });
+    return payload?.sub || null;
+  } catch { return null; }
+}
 
 const router = express.Router();
 
@@ -28,13 +38,16 @@ router.get('/feed', auth, (req, res) => {
     FROM posts p
     JOIN users u ON p.user_id = u.id
     JOIN projects pr ON p.project_id = pr.id
-    WHERE p.user_id IN (
-      SELECT following_id FROM follows_users WHERE follower_id = ?
+    WHERE pr.is_public = 1
+    AND (
+      p.user_id IN (
+        SELECT following_id FROM follows_users WHERE follower_id = ?
+      )
+      OR p.project_id IN (
+        SELECT project_id FROM follows_projects WHERE user_id = ?
+      )
+      OR p.user_id = ?
     )
-    OR p.project_id IN (
-      SELECT project_id FROM follows_projects WHERE user_id = ?
-    )
-    OR p.user_id = ?
     ORDER BY p.created_at DESC
     LIMIT 50
   `).all(userId, userId, userId);
@@ -42,8 +55,13 @@ router.get('/feed', auth, (req, res) => {
   res.json(posts.map(p => ({ ...p, data: JSON.parse(p.data || '{}') })));
 });
 
-// GET /api/posts/history/:projectId — full progress history (public)
-router.get('/history/:projectId', (req, res) => {
+// GET /api/posts/history/:projectId — full progress history
+router.get('/history/:projectId', async (req, res) => {
+  const project = db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.projectId);
+  if (!project) return res.status(404).json({ error: 'Not found' });
+  const viewerId = await getViewerId(req);
+  if (!project.is_public && project.user_id !== viewerId) return res.status(403).json({ error: 'Private project' });
+
   const posts = db.prepare(`
     SELECT p.*,
       u.username, u.display_name, u.avatar_url,
@@ -57,7 +75,12 @@ router.get('/history/:projectId', (req, res) => {
 });
 
 // GET /api/posts/project/:projectId — posts for a specific project
-router.get('/project/:projectId', auth, (req, res) => {
+router.get('/project/:projectId', async (req, res) => {
+  const project = db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.projectId);
+  if (!project) return res.status(404).json({ error: 'Not found' });
+  const viewerId = await getViewerId(req);
+  if (!project.is_public && project.user_id !== viewerId) return res.status(403).json({ error: 'Private project' });
+
   const posts = db.prepare(`
     SELECT p.*,
       u.username, u.display_name, u.avatar_url,
