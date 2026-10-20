@@ -152,17 +152,17 @@ export default function Community() {
                   {post.body}
                 </p>
                 {post.project_id && (
-                  <Link to={`/projects/${post.project_id}`} onClick={e => e.stopPropagation()} style={{
+                  <button type="button" onClick={e => { e.preventDefault(); e.stopPropagation(); navigate(`/projects/${post.project_id}`); }} style={{
                     display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 10,
                     background: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.2)',
-                    borderRadius: 8, padding: '6px 12px', textDecoration: 'none'
+                    borderRadius: 8, padding: '6px 12px', textDecoration: 'none', cursor: 'pointer', font: 'inherit'
                   }}>
                     {post.project_cover && <img src={post.project_cover} alt="" style={{ width: 28, height: 28, borderRadius: 4, objectFit: 'cover' }} />}
                     <span style={{ fontSize: 12 }}>
                       <span style={{ color: '#8892a4' }}>🔗 Project: </span>
                       <span style={{ color: '#00d4ff', fontWeight: 600 }}>{post.project_title}</span>
                     </span>
-                  </Link>
+                  </button>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ color: '#8892a4', fontSize: 12 }}>

@@ -28,6 +28,8 @@ export default function Feed() {
     try {
       const res = await getFeed();
       setPosts(res.data);
+    } catch (err) {
+      console.debug('Could not load feed', err);
     } finally { setLoading(false); }
   }
 
@@ -36,6 +38,8 @@ export default function Feed() {
     try {
       const res = await getLeaderboard(period);
       setLeaderboard(res.data);
+    } catch (err) {
+      console.debug('Could not load leaderboard', err);
     } finally { setLoading(false); }
   }
 
@@ -43,7 +47,9 @@ export default function Feed() {
     try {
       const res = await getMyPoints();
       setMyPoints(res.data);
-    } catch {}
+    } catch (err) {
+      console.debug('Could not load points', err);
+    }
   }
 
   async function handleGivePoints(projectId) {
@@ -97,7 +103,8 @@ export default function Feed() {
           </div>
         ) : (
           posts.map(post => (
-            <PostCard key={post.id} post={post} currentUserId={user?.id} />
+            <PostCard key={post.id} post={post} currentUserId={user?.id}
+              onDeleted={(postId) => setPosts(prev => prev.filter(p => p.id !== postId))} />
           ))
         )
       )}

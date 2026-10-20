@@ -27,7 +27,6 @@ export default api;
 
 // Posts
 export const getFeed = () => api.get('/posts/feed');
-export const getProjectPosts = (projectId) => api.get(`/posts/project/${projectId}`);
 export const getComments = (postId) => api.get(`/posts/${postId}/comments`);
 export const addComment = (postId, comment) => api.post(`/posts/${postId}/comments`, { comment });
 export const deleteComment = (postId, commentId) => api.delete(`/posts/${postId}/comments/${commentId}`);

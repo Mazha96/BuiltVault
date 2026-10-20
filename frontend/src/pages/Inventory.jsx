@@ -88,7 +88,6 @@ export default function Inventory() {
 
   const totalValue = parts.reduce((s, p) => s + (p.stock_qty * p.unit_cost), 0);
   const lowStock = parts.filter(p => p.available_qty <= 2 && p.stock_qty > 0).length;
-  const outOfStock = parts.filter(p => p.available_qty <= 0).length;
 
   return (
     <div style={s.page}>

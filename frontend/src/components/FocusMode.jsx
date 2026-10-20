@@ -19,8 +19,8 @@ function formatTime(seconds) {
 }
 
 // Simple confetti burst
-function Confetti({ active }) {
-  const pieces = Array.from({ length: 40 }, (_, i) => ({
+function makeConfettiPieces() {
+  return Array.from({ length: 40 }, (_, i) => ({
     id: i,
     x: Math.random() * 100,
     color: ['#00d4ff','#ff2d78','#fbbf24','#a78bfa','#34d399'][i % 5],
@@ -28,6 +28,11 @@ function Confetti({ active }) {
     size: 6 + Math.random() * 8,
     drift: (Math.random() - 0.5) * 200,
   }));
+}
+
+function Confetti({ active }) {
+  // Random layout is computed once per mount (lazy initializer), keeping render pure.
+  const [pieces] = useState(makeConfettiPieces);
 
   if (!active) return null;
   return (
@@ -67,7 +72,6 @@ export default function FocusMode({ project, onClose, onLogged }) {
   const [confetti, setConfetti] = useState(false);
   const [streak, setStreak] = useState(null);
   const intervalRef = useRef(null);
-  const audioCtx = useRef(null);
 
   const pct = ((totalSeconds - remaining) / totalSeconds) * 100;
   const circumference = 2 * Math.PI * 110;
@@ -87,7 +91,10 @@ export default function FocusMode({ project, onClose, onLogged }) {
         osc.start(ctx.currentTime + i * 0.15);
         osc.stop(ctx.currentTime + i * 0.15 + 0.4);
       });
-    } catch (e) {}
+    } catch (err) {
+      // Web Audio unavailable or blocked; the chime is optional.
+      console.debug('Focus chime unavailable', err);
+    }
   }
 
   const tick = useCallback(() => {

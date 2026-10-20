@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import ProjectCoverCard from '../components/ProjectCoverCard';
 import TagInput from '../components/TagInput';
 import api from '../api';
-import { Plus, FolderOpen, DollarSign, Trash2, Globe, Lock, X } from 'lucide-react';
+import { Plus, FolderOpen, Trash2, Globe, Lock, X } from 'lucide-react';
 
-const CATEGORIES = ['general','electronics','3d-printing','woodworking','metalwork','software','art','other'];
+import { PROJECT_CATEGORIES as CATEGORIES } from '../constants/categories';
 
 const s = {
   page: { maxWidth: 1152, margin: '0 auto', padding: '2rem 1rem' },
@@ -145,12 +145,12 @@ export default function Dashboard() {
                   </select>
                 </div>
               </div>
+              <div style={{ marginBottom: '0.875rem' }}>
+                <div style={{ display: 'block', color: '#9ca3af', fontSize: '0.8rem', marginBottom: 4, fontWeight: 500 }}>Tags</div>
+                <TagInput tags={form.tags} onChange={tags => setForm({...form, tags})} />
+                <p style={{ color: '#6b7280', fontSize: '0.7rem', margin: '4px 0 0' }}>Press Enter to add · max 8 tags</p>
+              </div>
               <label style={s.checkRow}>
-<div style={{ marginBottom: '0.875rem' }}>
-                  <label style={{ display: 'block', color: '#9ca3af', fontSize: '0.8rem', marginBottom: 4 }}>Tags</label>
-                  <TagInput tags={form.tags} onChange={tags => setForm({...form, tags})} />
-                  <p style={{ color: '#6b7280', fontSize: '0.7rem', margin: '4px 0 0' }}>Press Enter to add · max 8 tags</p>
-                </div>
                 <input type="checkbox" checked={form.is_public} onChange={e => setForm({...form, is_public: e.target.checked})} style={{ accentColor: '#00d4ff' }} />
                 Make this project public
               </label>
