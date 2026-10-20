@@ -81,7 +81,14 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 3001;
 if (require.main === module) {
-  app.listen(PORT, () => console.log(`BuildVault API running on port ${PORT}`));
+  // Express 5 passes listen errors (e.g. port already in use) to this callback instead of throwing.
+  app.listen(PORT, (err) => {
+    if (err) {
+      console.error(`BuildVault could not listen on port ${PORT}: ${err.code || err.message}. Is another copy already running?`);
+      process.exit(1);
+    }
+    console.log(`BuildVault API running on port ${PORT} (${GIT_SHA.slice(0, 7)})`);
+  });
 }
 
 module.exports = app;

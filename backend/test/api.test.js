@@ -176,3 +176,15 @@ test('project repo and demo links: http(s) only, returned publicly', async () =>
   assert.equal(r.body.demo_url, 'https://youtu.be/abc');
   assert.equal((await request(app).put(`/api/projects/${pub}`).set(A).send({ demo_url: 'javascript:alert(1)' })).status, 400);
 });
+
+test('server exits with an error when the port is already taken', async () => {
+  const net = require('net');
+  const { spawnSync } = require('child_process');
+  const blocker = net.createServer().listen(0);
+  await new Promise(r => blocker.once('listening', r));
+  const port = blocker.address().port;
+  const r = spawnSync(process.execPath, ['index.js'], { cwd: require('path').join(__dirname, '..'), env: { ...process.env, PORT: String(port) }, encoding: 'utf8', timeout: 10000 });
+  blocker.close();
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stderr, /could not listen/);
+});
