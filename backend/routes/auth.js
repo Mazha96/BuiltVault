@@ -3,9 +3,16 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuid } = require('uuid');
 const db = require('../db');
-require('dotenv').config();
+require('../lib/paths');
 
 const router = express.Router();
+
+// Legacy pre-Clerk password routes are disabled. Clerk handles sign-up, sign-in and recovery.
+const gone = (req, res) => res.status(410).json({ error: 'Use Clerk sign-in' });
+router.post('/register', gone);
+router.post('/login', gone);
+router.post('/recovery-question', gone);
+router.post('/reset-password', gone);
 
 function validatePassword(password) {
   const errors = [];

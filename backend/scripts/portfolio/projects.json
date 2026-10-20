@@ -1,0 +1,380 @@
+[
+ {
+  "key": "parkshift",
+  "title": "Park Shift: Ride-Operations Simulator",
+  "category": "game",
+  "status": "in-progress",
+  "featured": 1,
+  "order": 1,
+  "repo_url": "https://github.com/Mazha96/ParkShift",
+  "demo_url": "",
+  "tags": [
+   "unity",
+   "csharp",
+   "simulation",
+   "game-dev",
+   "ride-ops"
+  ],
+  "description": "A first-person co-op game about running a theme park attraction from the operator's side: open the shift, load guests, verify restraints, dispatch trains, keep two trains moving through block zones and recover from faults before the 3-minute shift ends.\n\nWhy I built it: I operate and troubleshoot real attractions, so I wanted to model ride control logic in software the same way a PLC program and an HMI split the work.\n\nHow it works\n- The simulation core (state machine, block zones, two-train logic, guest queue, 6-fault catalog, scoring, telemetry) is pure C# with no Unity references. Unity is only the presentation layer.\n- Every player action goes through one validated command path, so the same rules run in solo play and on a multiplayer host.\n- Faults have recovery steps, including a lockout-gated maintenance reset that needs the Technician role.\n- 9 automated tests plus a scripted full-shift bot playtest found and fixed two logic bugs (a staged train that never advanced, and an unfair instant stacking fault).\n\nStack: Unity 6, C#, FishNet (co-op scaffold). Built with AI coding agents (Claude, Claude Code); I designed the systems and test it in Unity.",
+  "tasks": [
+   [
+    "Write the game design document",
+    "design",
+    1
+   ],
+   [
+    "Engine-agnostic simulation core (state machine, block zones, two trains)",
+    "build",
+    1
+   ],
+   [
+    "Six-fault catalog with recovery steps, incl. lockout-gated reset",
+    "build",
+    1
+   ],
+   [
+    "9 core tests + headless bot playtest",
+    "testing",
+    1
+   ],
+   [
+    "Fix staged-train progress bug and stacking-fault grace period",
+    "testing",
+    1
+   ],
+   [
+    "Prefab-aware scene builder for real art",
+    "build",
+    0
+   ],
+   [
+    "Replace primitives with CC0 art packs",
+    "design",
+    0
+   ],
+   [
+    "Host/join co-op over FishNet",
+    "build",
+    0
+   ]
+  ],
+  "update": "Vertical slice playable in Unity: full 3-minute shift with dispatch, block zones and six faults. Core sim passes 9 tests and a bot playtest."
+ },
+ {
+  "key": "blasterblast",
+  "title": "BlasterBlast: Mixed-Reality Target Blaster",
+  "category": "game",
+  "status": "in-progress",
+  "featured": 1,
+  "order": 2,
+  "repo_url": "",
+  "demo_url": "",
+  "tags": [
+   "meta-quest",
+   "mixed-reality",
+   "unity",
+   "openxr",
+   "interactive"
+  ],
+  "description": "A mixed-reality shooting gallery for Meta Quest 3S. Pop-up targets appear on the room's real walls, the right controller is a blaster with a laser, haptics and 3D sound, and a show-style state machine runs each round (Idle, Countdown, Running, Results).\n\nWhy I built it: I maintain interactive blaster attractions at work and wanted to understand the mixed-reality side end to end.\n\nDesign\n- Targets register themselves with the game manager, so the game doesn't care whether the room scan (MR Utility Kit) or a fallback spawner placed them.\n- Standard, bonus and \"don't shoot\" decoy targets, a streak multiplier and an S/A/B/C grade.\n- Every raise, hit, miss and escape is logged to CSV and charted in Python to tune difficulty, the same idea as trending a fault log.\n\nStatus: passthrough runs on the headset; the gameplay scripts are written and being wired up and tested on the Quest.\n\nStack: Unity 6, Meta XR SDK, OpenXR, MR Utility Kit, C#, PowerShell build tools, Python/matplotlib, built with Claude Code.",
+  "tasks": [
+   [
+    "Unity 6 + Meta XR SDK + Android build setup",
+    "build",
+    1
+   ],
+   [
+    "Passthrough MR running on the Quest 3S",
+    "testing",
+    1
+   ],
+   [
+    "Gameplay scripts: round state machine, targets, raycast blaster, haptics, telemetry",
+    "build",
+    1
+   ],
+   [
+    "Command-line APK build + install tooling",
+    "build",
+    1
+   ],
+   [
+    "Wire the scene and test a full round on the headset",
+    "testing",
+    0
+   ],
+   [
+    "Spawn targets on real walls with MR Utility Kit",
+    "build",
+    0
+   ],
+   [
+    "Gameplay pack: bonus/decoy targets, hit FX, sounds",
+    "build",
+    0
+   ],
+   [
+    "45-second demo video + real telemetry chart",
+    "design",
+    0
+   ]
+  ],
+  "update": "Milestone 1: passthrough mixed reality running on the Quest 3S. Next: targets on real walls."
+ },
+ {
+  "key": "buildvault",
+  "existing_title": "BuiltVault",
+  "title": "BuildVault: Maker Project Hub",
+  "category": "software",
+  "status": "in-progress",
+  "featured": 1,
+  "order": 3,
+  "repo_url": "https://github.com/Mazha96/BuiltVault",
+  "demo_url": "",
+  "tags": [
+   "react",
+   "node",
+   "express",
+   "sqlite",
+   "clerk"
+  ],
+  "description": "The site you're on. A full-stack app where makers document builds: projects with BOMs, tasks and progress bars, file and video uploads, dated progress updates, follows, boosts, a community forum, a parts inventory with CSV import, and a focus timer with streaks.\n\nHow it's built\n- React 19 + Vite frontend, Node/Express 5 API, SQLite, Clerk authentication.\n- Self-hosted on my own Ubuntu VPS behind nginx with Let's Encrypt, run as a systemd service.\n- One-command deploy script: database backup, pull, build, restart, health check.\n\nSecurity and quality pass (Oct 2026): I had independent AI review agents audit the code, then fixed what they found: private-data leaks, an upload path that could have run scripts, unscoped updates, and a schema that only existed on the server. Automated API tests now cover those fixes.\n\nBuilt with AI coding agents (Claude, Clawbot); I set the scope, reviewed the changes and run the server.",
+  "tasks": [
+   [
+    "Data model and REST API",
+    "build",
+    1
+   ],
+   [
+    "Clerk authentication",
+    "build",
+    1
+   ],
+   [
+    "Projects, BOM, tasks, files, progress updates",
+    "build",
+    1
+   ],
+   [
+    "Feed, follows, boosts, community forum, notifications",
+    "build",
+    1
+   ],
+   [
+    "Inventory with CSV import and review step",
+    "build",
+    1
+   ],
+   [
+    "Deploy on Ubuntu VPS: nginx, SSL, systemd",
+    "build",
+    1
+   ],
+   [
+    "Security audit + automated API tests",
+    "testing",
+    1
+   ],
+   [
+    "Public portfolio profile with featured projects",
+    "build",
+    1
+   ],
+   [
+    "Image thumbnails and pagination",
+    "build",
+    0
+   ]
+  ],
+  "update": "Security and portfolio update: public profiles, featured projects, video playback, and automated API tests."
+ },
+ {
+  "key": "registry",
+  "title": "AI Missing-Persons Registry",
+  "category": "software",
+  "status": "in-progress",
+  "featured": 1,
+  "order": 4,
+  "repo_url": "",
+  "demo_url": "",
+  "tags": [
+   "ai",
+   "nextjs",
+   "supabase",
+   "humanitarian",
+   "human-in-the-loop"
+  ],
+  "description": "A humanitarian prototype for finding people after a disaster, when lists of missing and found people get shared as photos of handwritten and printed pages.\n\nWhat it does\n- AI reads names and details from photos of lists and turns them into structured records.\n- Records are de-duplicated and cross-referenced, and the data model follows PFIF 1.4 so it could be exchanged with other registries.\n- Trust model: the AI only ranks possible matches; a person reviews and confirms every match before anything is marked as found.\n\nStatus: extraction and matching validated on test data only (no real personal data).\n\nStack: Next.js, Supabase, an AI vision model, built with AI coding agents.",
+  "tasks": [
+   [
+    "PFIF 1.4-compatible data model",
+    "design",
+    1
+   ],
+   [
+    "AI extraction of names from photos",
+    "build",
+    1
+   ],
+   [
+    "De-duplication and cross-referencing",
+    "build",
+    1
+   ],
+   [
+    "Human review gate for every match",
+    "build",
+    1
+   ],
+   [
+    "Validate on test data",
+    "testing",
+    1
+   ],
+   [
+    "Pilot with a real organization",
+    "other",
+    0
+   ]
+  ],
+  "update": "Extraction and matching working on test data. AI ranks, people confirm."
+ },
+ {
+  "key": "clawbot",
+  "title": "Clawbot: Self-Hosted AI Agent",
+  "category": "software",
+  "status": "in-progress",
+  "featured": 1,
+  "order": 5,
+  "repo_url": "",
+  "demo_url": "",
+  "tags": [
+   "llm",
+   "claude-api",
+   "telegram",
+   "linux",
+   "automation"
+  ],
+  "description": "My always-on AI assistant, reachable from Telegram and running on my own Linux VPS through the OpenClaw agent framework on the Claude API.\n\nWhat it does\n- Several agents with separate roles and their own Telegram bots, including one that works on this website's code.\n- Has edited and deployed BuildVault directly on the server; it now follows a git workflow where GitHub is the source of truth and every deploy backs up the database first.\n\nOps lessons: I debugged an outage where the bot stopped answering. The cause was a provider billing cooldown stored in its config plus a fallback model that didn't exist. I cleared the cooldown, confirmed the API worked directly, and brought it back online; fixing the fallback model is next.\n\nStack: Linux (Ubuntu), OpenClaw, Claude API, Telegram Bot API, systemd.",
+  "tasks": [
+   [
+    "Deploy agent gateway on Ubuntu VPS",
+    "build",
+    1
+   ],
+   [
+    "Telegram bots per agent",
+    "build",
+    1
+   ],
+   [
+    "Use it to build and deploy BuildVault",
+    "build",
+    1
+   ],
+   [
+    "Git-first workflow + DB backups on deploy",
+    "build",
+    1
+   ],
+   [
+    "Recover from billing-cooldown outage",
+    "testing",
+    1
+   ],
+   [
+    "Fix fallback model configuration",
+    "other",
+    0
+   ]
+  ],
+  "update": "Now deploys BuildVault through a git workflow with automatic database backups."
+ },
+ {
+  "key": "ledmatrix",
+  "title": "ESP32 LED Matrix Controller",
+  "category": "electronics",
+  "status": "in-progress",
+  "featured": 1,
+  "order": 6,
+  "repo_url": "",
+  "demo_url": "",
+  "tags": [
+   "esp32",
+   "embedded",
+   "c++",
+   "ws2812b",
+   "wifi"
+  ],
+  "description": "An ESP32 controller for a 16x16 WS2812B (NeoPixel) LED panel with a Wi-Fi web interface to change patterns and colors from a phone.\n\n- Firmware in C++ (Arduino framework) on the ESP32.\n- Web UI served by the ESP32 itself over Wi-Fi.\n\nPhotos and a video of the panel running are coming.",
+  "tasks": [
+   [
+    "Wire the 16x16 panel to the ESP32",
+    "build",
+    1
+   ],
+   [
+    "Firmware: patterns and color control",
+    "build",
+    1
+   ],
+   [
+    "Wi-Fi web UI",
+    "build",
+    1
+   ],
+   [
+    "3D-printed diffuser and frame",
+    "design",
+    0
+   ],
+   [
+    "Photos and demo video",
+    "other",
+    0
+   ]
+  ],
+  "update": ""
+ },
+ {
+  "key": "sleepcircuit",
+  "title": "120 VAC Sleep-Mode Control Circuit",
+  "category": "electronics",
+  "status": "in-progress",
+  "featured": 0,
+  "order": 7,
+  "repo_url": "",
+  "demo_url": "",
+  "tags": [
+   "arduino",
+   "relay",
+   "120vac",
+   "rf",
+   "controls"
+  ],
+  "description": "An Arduino-based control circuit that switches a 120 VAC load into a timed sleep mode, with the RF remote simulated during development.\n\nIt's the same idea as a retrofit I designed at work: remote relay control wired in parallel with the existing manual switch, so manual control always stays available as a backup.",
+  "tasks": [
+   [
+    "Schematic and relay selection",
+    "design",
+    1
+   ],
+   [
+    "Arduino timing logic",
+    "build",
+    1
+   ],
+   [
+    "RF remote simulation",
+    "testing",
+    1
+   ],
+   [
+    "Enclosure and final wiring",
+    "build",
+    0
+   ]
+  ],
+  "update": ""
+ }
+]

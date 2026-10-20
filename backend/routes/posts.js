@@ -15,6 +15,15 @@ async function getViewerId(req) {
 
 const router = express.Router();
 
+// A post is visible if its project is public or the viewer owns the project.
+function visiblePost(postId, viewerId) {
+  const row = db.prepare(`SELECT p.id, p.user_id, pr.user_id AS owner_id, pr.is_public
+    FROM posts p JOIN projects pr ON pr.id = p.project_id WHERE p.id=?`).get(postId);
+  if (!row) return { status: 404 };
+  if (!row.is_public && row.owner_id !== viewerId) return { status: 403 };
+  return { status: 200, row };
+}
+
 // POST /api/posts/manual — create a manual post (cover update, milestone, etc.)
 router.post('/manual', auth, (req, res) => {
   const { projectId, type, caption, data } = req.body;
@@ -93,8 +102,10 @@ router.get('/project/:projectId', async (req, res) => {
   res.json(posts.map(p => ({ ...p, data: JSON.parse(p.data || '{}') })));
 });
 
-// GET /api/posts/:id — single post
-router.get('/:id', auth, (req, res) => {
+// GET /api/posts/:id — single post (works signed-out for public projects)
+router.get('/:id', async (req, res) => {
+  const v = visiblePost(req.params.id, await getViewerId(req));
+  if (v.status !== 200) return res.status(v.status).json({ error: v.status === 404 ? 'Post not found' : 'Private project' });
   const post = db.prepare(`
     SELECT p.*,
       u.username, u.display_name, u.avatar_url,
@@ -108,8 +119,10 @@ router.get('/:id', auth, (req, res) => {
   res.json({ ...post, data: JSON.parse(post.data || '{}') });
 });
 
-// GET /api/posts/:id/comments
-router.get('/:id/comments', auth, (req, res) => {
+// GET /api/posts/:id/comments (works signed-out for public projects)
+router.get('/:id/comments', async (req, res) => {
+  const v = visiblePost(req.params.id, await getViewerId(req));
+  if (v.status !== 200) return res.status(v.status).json({ error: v.status === 404 ? 'Post not found' : 'Private project' });
   const comments = db.prepare(`
     SELECT c.*, u.username, u.display_name, u.avatar_url
     FROM post_comments c
@@ -124,8 +137,8 @@ router.get('/:id/comments', auth, (req, res) => {
 router.post('/:id/comments', auth, (req, res) => {
   const { comment } = req.body;
   if (!comment || !comment.trim()) return res.status(400).json({ error: 'Comment required' });
-  const post = db.prepare('SELECT id FROM posts WHERE id=?').get(req.params.id);
-  if (!post) return res.status(404).json({ error: 'Post not found' });
+  const v = visiblePost(req.params.id, req.user.id);
+  if (v.status !== 200) return res.status(v.status).json({ error: v.status === 404 ? 'Post not found' : 'Private project' });
   const id = uuidv4();
   db.prepare('INSERT INTO post_comments (id, post_id, user_id, comment) VALUES (?,?,?,?)')
     .run(id, req.params.id, req.user.id, comment.trim());
@@ -143,6 +156,20 @@ router.delete('/:id/comments/:commentId', auth, (req, res) => {
   if (!comment) return res.status(404).json({ error: 'Not found' });
   if (comment.user_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
   db.prepare('DELETE FROM post_comments WHERE id=?').run(req.params.commentId);
+  res.json({ ok: true });
+});
+
+// DELETE /api/posts/:id — the post's author, the project owner, or a supermod
+router.delete('/:id', auth, (req, res) => {
+  const post = db.prepare('SELECT p.id, p.user_id, pr.user_id AS owner_id FROM posts p JOIN projects pr ON pr.id=p.project_id WHERE p.id=?').get(req.params.id);
+  if (!post) return res.status(404).json({ error: 'Post not found' });
+  const me = db.prepare('SELECT role FROM users WHERE id=?').get(req.user.id);
+  const allowed = post.user_id === req.user.id || post.owner_id === req.user.id || me?.role === 'supermod';
+  if (!allowed) return res.status(403).json({ error: 'Forbidden' });
+  db.transaction(() => {
+    db.prepare('DELETE FROM post_comments WHERE post_id=?').run(post.id);
+    db.prepare('DELETE FROM posts WHERE id=?').run(post.id);
+  })();
   res.json({ ok: true });
 });
 

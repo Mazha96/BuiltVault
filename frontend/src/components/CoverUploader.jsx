@@ -1,17 +1,25 @@
 import { useRef, useState } from 'react';
 import api from '../api';
 
-export default function CoverUploader({ projectId, currentCover, onUpdate, compact = false }) {
+const ACCEPT = 'image/jpeg,image/png,image/webp,image/gif';
+const HEIC_MSG = "HEIC isn't supported, export as JPG";
+const isHeic = (f) => /\.(heic|heif)$/i.test(f.name || '') || /image\/hei[cf]/i.test(f.type || '');
+
+export default function CoverUploader({ projectId, onUpdate, compact = false }) {
   const inputRef = useRef();
   const [uploading, setUploading] = useState(false);
   const [showPublish, setShowPublish] = useState(false);
   const [caption, setCaption] = useState('');
   const [pendingUrl, setPendingUrl] = useState(null);
   const [publishing, setPublishing] = useState(false);
+  const [error, setError] = useState('');
 
   async function handleFile(e) {
     const file = e.target.files[0];
+    e.target.value = '';
     if (!file) return;
+    if (isHeic(file)) { setError(HEIC_MSG); return; }
+    setError('');
     setUploading(true);
     try {
       const form = new FormData();
@@ -23,7 +31,7 @@ export default function CoverUploader({ projectId, currentCover, onUpdate, compa
       setPendingUrl(res.data.cover_url);
       setShowPublish(true);
     } catch (err) {
-      alert(err.response?.data?.error || 'Upload failed');
+      setError(err.response?.data?.error || 'Upload failed');
     } finally {
       setUploading(false);
     }
@@ -51,7 +59,14 @@ export default function CoverUploader({ projectId, currentCover, onUpdate, compa
   if (compact) {
     return (
       <>
-        <input ref={inputRef} type="file" accept="image/*,.heic,.heif" style={{ display: 'none' }} onChange={handleFile} />
+        <input ref={inputRef} type="file" accept={ACCEPT} style={{ display: 'none' }} onChange={handleFile} />
+        {error && (
+          <div role="alert" onClick={() => setError('')} style={{
+            position: 'absolute', bottom: 52, right: 12, maxWidth: 260,
+            background: 'rgba(0,0,0,0.8)', border: '1px solid #ff2d7866', borderRadius: 8,
+            padding: '6px 10px', color: '#ff2d78', fontSize: 12, cursor: 'pointer'
+          }}>{error}</div>
+        )}
         <button
           onClick={() => !uploading && inputRef.current.click()}
           style={{
@@ -114,7 +129,7 @@ export default function CoverUploader({ projectId, currentCover, onUpdate, compa
   // Full mode: shown when no cover exists yet (standalone upload zone)
   return (
     <div>
-      <input ref={inputRef} type="file" accept="image/*,.heic,.heif" style={{ display: 'none' }} onChange={handleFile} />
+      <input ref={inputRef} type="file" accept={ACCEPT} style={{ display: 'none' }} onChange={handleFile} />
       <div style={{
         width: '100%', height: 120, borderRadius: 14,
         background: 'linear-gradient(135deg, #0d1628, #0a1a2e)',
@@ -128,11 +143,12 @@ export default function CoverUploader({ projectId, currentCover, onUpdate, compa
             <span style={{ fontSize: 28 }}>📷</span>
             <div>
               <div style={{ color: '#e2e8f0', fontWeight: 700, fontSize: 14 }}>Add Cover Photo</div>
-              <div style={{ color: '#8892a4', fontSize: 12 }}>JPG, PNG, WebP, HEIC</div>
+              <div style={{ color: '#8892a4', fontSize: 12 }}>JPG, PNG, WebP</div>
             </div>
           </>
         )}
       </div>
+      {error && <p role="alert" style={{ color: '#ff2d78', fontSize: 12, margin: '6px 0 0' }}>{error}</p>}
     </div>
   );
 }

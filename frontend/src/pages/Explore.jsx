@@ -1,15 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import { Globe, DollarSign, User, Trophy, Grid, Search, Activity } from 'lucide-react';
 import ProjectCoverCard from '../components/ProjectCoverCard';
 
-const CATEGORIES = ['all','electronics','3d-printing','woodworking','metalwork','software','art','other','general'];
-const CATEGORY_EMOJI = {
-  all: '🌐', electronics: '⚡', '3d-printing': '🖨️', woodworking: '🪵',
-  metalwork: '⚙️', software: '💻', art: '🎨', other: '🔧', general: '📦'
-};
+import { PROJECT_CATEGORIES, CATEGORY_EMOJI } from '../constants/categories';
+
+const CATEGORIES = ['all', ...PROJECT_CATEGORIES];
 
 const s = {
   page: { maxWidth: 1152, margin: '0 auto', padding: '2rem 1rem' },
@@ -106,8 +104,10 @@ const formatTimestamp = (iso) => {
 
 export default function Explore() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('all');
   const [view, setView] = useState('grid'); // 'grid' | 'top10' | 'feed'
@@ -123,7 +123,11 @@ export default function Explore() {
 
   const fetchProjects = () => {
     setLoading(true);
-    api.get('/projects/public').then(r => setProjects(r.data)).finally(() => setLoading(false));
+    setLoadError(false);
+    api.get('/projects/public')
+      .then(r => setProjects(r.data))
+      .catch(err => { console.debug('Failed to load public projects', err); setLoadError(true); })
+      .finally(() => setLoading(false));
   };
 
   const fetchFeed = () => {
@@ -196,8 +200,8 @@ export default function Explore() {
   let filtered = projects.filter(p => {
     const matchCat = category === 'all' || p.category === category;
     const q = search.toLowerCase();
-let tags = [];
-    try { tags = JSON.parse(p.tags || '[]'); } catch {}
+    let tags = [];
+    try { tags = JSON.parse(p.tags || '[]'); } catch { /* malformed tags: treat as none */ }
     const matchSearch = !q || p.title.toLowerCase().includes(q) || p.description?.toLowerCase().includes(q) || p.username?.toLowerCase().includes(q) || tags.some(t => t.includes(q));
     return matchCat && matchSearch;
   });
@@ -278,6 +282,12 @@ let tags = [];
             })}
           </div>
         )
+      ) : loadError ? (
+        <div style={s.empty}>
+          <Globe size={40} style={{ margin: '0 auto 1rem', opacity: 0.3 }} />
+          <p>Couldn't load projects, try again.</p>
+          <button onClick={fetchProjects} style={{ ...s.tab(true), marginTop: '1rem' }}>Retry</button>
+        </div>
       ) : filtered.length === 0 ? (
         <div style={s.empty}>
           <Globe size={40} style={{ margin: '0 auto 1rem', opacity: 0.3 }} />
@@ -299,7 +309,7 @@ let tags = [];
                 <div style={s.rankInfo}>
                   <div style={s.rankTitle}>{p.title}</div>
                   <div style={s.rankMeta}>
-                    by <Link to={`/users/${p.user_id}`} style={{color:'#00d4ff',textDecoration:'none'}} onClick={e=>e.stopPropagation()}>{p.display_name||p.username}</Link> · {p.category} · {p.progress}% complete · ${p.total_cost?.toFixed(2) || '0.00'}
+                    by <button type="button" style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', color: '#00d4ff', cursor: 'pointer' }} onClick={e => { e.preventDefault(); e.stopPropagation(); navigate(`/users/${p.user_id}`); }}>{p.display_name || p.username}</button> · {p.category} · {p.progress}% complete · ${p.total_cost?.toFixed(2) || '0.00'}
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>

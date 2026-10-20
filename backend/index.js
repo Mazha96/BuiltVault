@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-require('dotenv').config();
+const { UPLOAD_DIR } = require('./lib/paths');
 
 const app = express();
 
@@ -18,7 +18,19 @@ app.use((req, res, next) => {
   });
   next();
 });
-app.use('/uploads', express.static(path.join(__dirname, process.env.UPLOAD_DIR || './uploads')));
+// Uploaded files are served from the same origin as the app, so anything a browser could
+// execute (HTML, SVG, JS...) must never render inline: it would run with the site's cookies.
+// Images, video and PDF display inline; everything else is a sandboxed download.
+const INLINE_EXT = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.heif', '.mp4', '.webm', '.mov', '.m4v', '.pdf']);
+app.use('/uploads', express.static(UPLOAD_DIR, {
+  setHeaders(res, filePath) {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (!INLINE_EXT.has(path.extname(filePath).toLowerCase())) {
+      res.setHeader('Content-Disposition', 'attachment');
+      res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    }
+  },
+}));
 
 // API routes
 app.use('/api/auth', require('./routes/auth'));
@@ -32,7 +44,11 @@ app.use('/api/points', require('./routes/points'));
 app.use('/api/community', require('./routes/community'));
 app.use('/api/timelogs', require('./routes/timelogs'));
 app.use('/api/notifications', require('./routes/notifications'));
-app.get('/api/health', (req, res) => res.json({ ok: true }));
+const GIT_SHA = (() => {
+  try { return require('child_process').execSync('git rev-parse HEAD', { cwd: __dirname, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); }
+  catch { return 'unknown'; }
+})();
+app.get('/api/health', (req, res) => res.json({ ok: true, version: GIT_SHA }));
 
 // Serve frontend
 const frontendDist = path.join(__dirname, '../frontend/dist');
@@ -55,5 +71,17 @@ if (fs.existsSync(frontendDist)) {
   });
 }
 
+// Last-resort error handler: log the details, return a plain JSON error.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error(`[${new Date().toISOString()}] ${req.method} ${req.path}`, err);
+  if (res.headersSent) return;
+  res.status(err.status || 500).json({ error: err.status && err.status < 500 ? err.message : 'Server error' });
+});
+
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`BuildVault API running on port ${PORT}`));
+if (require.main === module) {
+  app.listen(PORT, () => console.log(`BuildVault API running on port ${PORT}`));
+}
+
+module.exports = app;

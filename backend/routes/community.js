@@ -5,17 +5,22 @@ const { v4: uuid } = require('uuid');
 const db = require('../db');
 const auth = require('../middleware/auth');
 const { notify } = require('../services/notify');
-require('dotenv').config();
+const { UPLOAD_DIR } = require('../lib/paths');
 
 const router = express.Router();
 
 const CATEGORIES = ['general','help','showcase','electronics','3d-printing','software','woodworking','metalwork'];
 
 const storage = multer.diskStorage({
-  destination: process.env.UPLOAD_DIR || './uploads',
+  destination: UPLOAD_DIR,
   filename: (req, file, cb) => cb(null, `${uuid()}${path.extname(file.originalname)}`)
 });
-const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
+const IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.heif'];
+const upload = multer({
+  storage,
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => cb(null, IMAGE_EXT.includes(path.extname(file.originalname).toLowerCase())),
+});
 
 function isMod(userId) {
   const u = db.prepare('SELECT role FROM users WHERE id=?').get(userId);
@@ -48,7 +53,7 @@ router.get('/', auth, (req, res) => {
       pr.title as project_title, pr.cover_url as project_cover, pr.category as project_category
     FROM community_posts cp
     JOIN users u ON cp.user_id=u.id
-    LEFT JOIN projects pr ON cp.project_id=pr.id
+    LEFT JOIN projects pr ON cp.project_id=pr.id AND pr.is_public=1
     WHERE cp.is_deleted=0
   `;
   const params = [];
@@ -63,6 +68,9 @@ router.post('/', auth, (req, res) => {
   const { title, body, category, project_id, images } = req.body;
   if (!title?.trim() || !body?.trim()) return res.status(400).json({ error: 'Title and body required' });
   if (!CATEGORIES.includes(category)) return res.status(400).json({ error: 'Invalid category' });
+  if (project_id && !db.prepare('SELECT 1 FROM projects WHERE id=? AND user_id=?').get(project_id, req.user.id)) {
+    return res.status(400).json({ error: 'You can only link your own projects' });
+  }
   const id = uuid();
   db.prepare('INSERT INTO community_posts (id,user_id,category,title,body,project_id,images) VALUES (?,?,?,?,?,?,?)')
     .run(id, req.user.id, category, title.trim(), body.trim(), project_id || null, JSON.stringify(images || []));
@@ -79,7 +87,7 @@ router.get('/:id', auth, (req, res) => {
     SELECT cp.*, u.username, u.display_name, u.avatar_url, u.role,
       pr.title as project_title, pr.cover_url as project_cover, pr.category as project_category
     FROM community_posts cp JOIN users u ON cp.user_id=u.id
-    LEFT JOIN projects pr ON cp.project_id=pr.id
+    LEFT JOIN projects pr ON cp.project_id=pr.id AND pr.is_public=1
     WHERE cp.id=? AND cp.is_deleted=0
   `).get(req.params.id);
   if (!post) return res.status(404).json({ error: 'Not found' });

@@ -38,10 +38,11 @@ function getFeedForUser(userId, limit = 50) {
     FROM activity_log a
     LEFT JOIN projects p ON a.project_id = p.id
     LEFT JOIN users u ON a.actor_id = u.id
-    WHERE ${where}
+    WHERE (${where})
+      AND (a.project_id IS NULL OR p.is_public = 1 OR p.user_id = ?)
     ORDER BY datetime(a.created_at) DESC
     LIMIT ?
-  `).all(...params, limit);
+  `).all(...params, userId, limit);
 
   return rows.map(row => ({
     id: row.id,

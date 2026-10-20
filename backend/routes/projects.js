@@ -4,6 +4,8 @@ const { verifyToken } = require('@clerk/express');
 const db = require('../db');
 const auth = require('../middleware/auth');
 const { logActivity } = require('../services/activity');
+const { cleanUrl } = require('../lib/url');
+const PROJECT_LINKS = ['repo_url', 'demo_url'];
 
 const router = express.Router();
 
@@ -70,7 +72,7 @@ router.get('/', auth, (req, res) => {
 
 // Get single project (public or owned)
 router.get('/:id', async (req, res) => {
-  const project = db.prepare('SELECT p.*, u.username, u.avatar_url FROM projects p JOIN users u ON p.user_id=u.id WHERE p.id=?').get(req.params.id);
+  const project = db.prepare('SELECT p.*, u.username, u.display_name, u.avatar_url FROM projects p JOIN users u ON p.user_id=u.id WHERE p.id=?').get(req.params.id);
   if (!project) return res.status(404).json({ error: 'Not found' });
   const viewerId = await getViewerId(req);
   if (!project.is_public && project.user_id !== viewerId) return res.status(403).json({ error: 'Private project' });
@@ -99,19 +101,52 @@ router.put('/:id', auth, (req, res) => {
   if (!project) return res.status(404).json({ error: 'Not found' });
   const { title, description, status, is_public, category, cover_url, tags } = req.body;
 
+  // Validate the portfolio fields before writing anything, so a 400 never leaves a partial update.
+  const extra = {};
+  for (const f of PROJECT_LINKS) {   // proof links shown as buttons (code repo, demo video)
+    if (req.body[f] === undefined) continue;
+    const v = cleanUrl(req.body[f]);
+    if (v === null) return res.status(400).json({ error: `${f} must be a valid http(s) link` });
+    extra[f] = v;
+  }
+  if (req.body.is_featured !== undefined) {   // pinned to the top of the public profile (max 6)
+    const want = req.body.is_featured ? 1 : 0;
+    if (want && !project.is_featured) {
+      const count = db.prepare('SELECT COUNT(*) AS c FROM projects WHERE user_id=? AND is_featured=1').get(req.user.id).c;
+      if (count >= 6) return res.status(400).json({ error: 'You can feature up to 6 projects' });
+    }
+    extra.is_featured = want;
+  }
+  if (req.body.featured_order !== undefined) extra.featured_order = Number(req.body.featured_order) || 0;
+  db.transaction(() => {
+    for (const [col, val] of Object.entries(extra)) db.prepare(`UPDATE projects SET ${col}=? WHERE id=?`).run(val, req.params.id);
+  })();
+
   let statusChanged = false;
   // When marking complete: deduct BOM quantities from inventory stock
   if (status && status !== project.status) {
     statusChanged = true;
-    if (status === 'complete') {
-      const bomItems = db.prepare('SELECT * FROM bom_items WHERE project_id=?').all(req.params.id);
+    // Marking complete takes BOM parts out of inventory and records exactly how much was taken
+    // (stock can't go below 0). Leaving 'complete' puts back only what was recorded, so toggling
+    // the status, or editing the BOM while complete, never creates or loses stock.
+    const bomItems = db.prepare('SELECT * FROM bom_items WHERE project_id=? AND part_id IS NOT NULL').all(req.params.id);
+    db.transaction(() => {
       for (const item of bomItems) {
-        if (item.part_id) {
-          db.prepare('UPDATE inventory_parts SET stock_qty = MAX(0, stock_qty - ?) WHERE id=?')
-            .run(item.qty || 0, item.part_id);
+        const part = db.prepare('SELECT stock_qty FROM inventory_parts WHERE id=? AND user_id=?').get(item.part_id, req.user.id);
+        if (!part) continue;
+        if (status === 'complete') {
+          const take = Math.min(part.stock_qty || 0, item.qty || 0);
+          db.prepare('UPDATE inventory_parts SET stock_qty = stock_qty - ? WHERE id=?').run(take, item.part_id);
+          db.prepare('UPDATE bom_items SET deducted_qty = deducted_qty + ? WHERE id=?').run(take, item.id);
+        } else if (project.status === 'complete') {
+          const giveBack = project.stock_ledger ? (item.deducted_qty || 0) : (item.qty || 0);
+          if (giveBack) db.prepare('UPDATE inventory_parts SET stock_qty = stock_qty + ? WHERE id=?').run(giveBack, item.part_id);
+          db.prepare('UPDATE bom_items SET deducted_qty = 0 WHERE id=?').run(item.id);
         }
       }
-    }
+      if (status === 'complete') db.prepare('UPDATE projects SET stock_ledger=1 WHERE id=?').run(req.params.id);
+      else if (project.status === 'complete') db.prepare('UPDATE projects SET stock_ledger=0 WHERE id=?').run(req.params.id);
+    })();
   }
 
   db.prepare(`UPDATE projects SET title=COALESCE(?,title), description=COALESCE(?,description),
@@ -130,15 +165,24 @@ router.put('/:id', auth, (req, res) => {
 router.delete('/:id', auth, (req, res) => {
   const project = db.prepare('SELECT * FROM projects WHERE id=? AND user_id=?').get(req.params.id, req.user.id);
   if (!project) return res.status(404).json({ error: 'Not found' });
-  db.prepare('DELETE FROM bom_items WHERE project_id=?').run(req.params.id);
-  db.prepare('DELETE FROM tasks WHERE project_id=?').run(req.params.id);
-  db.prepare('DELETE FROM project_files WHERE project_id=?').run(req.params.id);
-  db.prepare('DELETE FROM projects WHERE id=?').run(req.params.id);
+  const pid = req.params.id;
+  db.transaction(() => {
+    db.prepare('DELETE FROM post_comments WHERE post_id IN (SELECT id FROM posts WHERE project_id=?)').run(pid);
+    for (const t of ['posts','bom_items','tasks','project_files','follows_projects','points_transactions','activity_log','time_logs','achievements']) {
+      db.prepare(`DELETE FROM ${t} WHERE project_id=?`).run(pid);
+    }
+    db.prepare('UPDATE community_posts SET project_id=NULL WHERE project_id=?').run(pid);
+    db.prepare('DELETE FROM projects WHERE id=?').run(pid);
+  })();
   res.json({ ok: true });
 });
 
 // --- BOM ---
-router.get('/:id/bom', auth, (req, res) => {
+router.get('/:id/bom', async (req, res) => {
+  const project = db.prepare('SELECT user_id, is_public FROM projects WHERE id=?').get(req.params.id);
+  if (!project) return res.status(404).json({ error: 'Not found' });
+  const viewerId = await getViewerId(req);
+  if (!project.is_public && project.user_id !== viewerId) return res.status(403).json({ error: 'Private project' });
   res.json(db.prepare('SELECT * FROM bom_items WHERE project_id=?').all(req.params.id));
 });
 
@@ -146,6 +190,9 @@ router.post('/:id/bom', auth, (req, res) => {
   const project = db.prepare('SELECT * FROM projects WHERE id=? AND user_id=?').get(req.params.id, req.user.id);
   if (!project) return res.status(403).json({ error: 'Forbidden' });
   const { name, qty, unit, unit_cost, supplier, supplier_url, part_id, is_3d_printed, filament_type, filament_grams, filament_cost_per_kg, notes } = req.body;
+  if (part_id && !db.prepare('SELECT 1 FROM inventory_parts WHERE id=? AND user_id=?').get(part_id, req.user.id)) {
+    return res.status(400).json({ error: 'Unknown inventory part' });
+  }
   const id = uuid();
   let totalCost = (qty || 1) * (unit_cost || 0);
   if (is_3d_printed) {
@@ -161,18 +208,22 @@ router.post('/:id/bom', auth, (req, res) => {
 router.put('/:id/bom/:bomId', auth, (req, res) => {
   const project = db.prepare('SELECT * FROM projects WHERE id=? AND user_id=?').get(req.params.id, req.user.id);
   if (!project) return res.status(403).json({ error: 'Forbidden' });
-  const { name, qty, unit, unit_cost, supplier, supplier_url, is_3d_printed, filament_type, filament_grams, filament_cost_per_kg, notes } = req.body;
-  let totalCost = (qty || 1) * (unit_cost || 0);
-  if (is_3d_printed) totalCost = ((filament_grams || 0) / 1000) * (filament_cost_per_kg || 0);
-  db.prepare(`UPDATE bom_items SET name=COALESCE(?,name),qty=COALESCE(?,qty),unit=COALESCE(?,unit),
-    unit_cost=COALESCE(?,unit_cost),total_cost=?,supplier=COALESCE(?,supplier),
-    supplier_url=COALESCE(?,supplier_url),is_3d_printed=COALESCE(?,is_3d_printed),
-    filament_type=COALESCE(?,filament_type),filament_grams=COALESCE(?,filament_grams),
-    filament_cost_per_kg=COALESCE(?,filament_cost_per_kg),notes=COALESCE(?,notes)
-    WHERE id=? AND project_id=?`)
-    .run(name,qty,unit,unit_cost,totalCost,supplier,supplier_url,is_3d_printed?1:0,filament_type,filament_grams,filament_cost_per_kg,notes,req.params.bomId,req.params.id);
+  const existing = db.prepare('SELECT * FROM bom_items WHERE id=? AND project_id=?').get(req.params.bomId, req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Not found' });
+  // Merge: fields missing from the body keep their current value (a partial update must not reset cost).
+  const fields = ['name','qty','unit','unit_cost','supplier','supplier_url','is_3d_printed','filament_type','filament_grams','filament_cost_per_kg','notes'];
+  const m = { ...existing };
+  for (const f of fields) if (req.body[f] !== undefined) m[f] = req.body[f];
+  m.is_3d_printed = m.is_3d_printed ? 1 : 0;
+  const totalCost = m.is_3d_printed
+    ? ((m.filament_grams || 0) / 1000) * (m.filament_cost_per_kg || 0)
+    : (m.qty || 1) * (m.unit_cost || 0);
+  db.prepare(`UPDATE bom_items SET name=?,qty=?,unit=?,unit_cost=?,total_cost=?,supplier=?,supplier_url=?,
+    is_3d_printed=?,filament_type=?,filament_grams=?,filament_cost_per_kg=?,notes=? WHERE id=? AND project_id=?`)
+    .run(m.name, m.qty, m.unit, m.unit_cost, totalCost, m.supplier, m.supplier_url, m.is_3d_printed,
+      m.filament_type, m.filament_grams, m.filament_cost_per_kg, m.notes, req.params.bomId, req.params.id);
   recalcCost(req.params.id);
-  res.json(db.prepare('SELECT * FROM bom_items WHERE id=?').get(req.params.bomId));
+  res.json(db.prepare('SELECT * FROM bom_items WHERE id=? AND project_id=?').get(req.params.bomId, req.params.id));
 });
 
 router.delete('/:id/bom/:bomId', auth, (req, res) => {
@@ -200,8 +251,9 @@ router.put('/:id/tasks/:taskId', auth, (req, res) => {
   if (!project) return res.status(403).json({ error: 'Forbidden' });
   const { title, is_done, category } = req.body;
   const existing = db.prepare('SELECT * FROM tasks WHERE id=? AND project_id=?').get(req.params.taskId, req.params.id);
-  db.prepare('UPDATE tasks SET title=COALESCE(?,title),is_done=COALESCE(?,is_done),category=COALESCE(?,category) WHERE id=?')
-    .run(title, is_done != null ? (is_done ? 1 : 0) : null, category, req.params.taskId);
+  if (!existing) return res.status(404).json({ error: 'Task not found' });
+  db.prepare('UPDATE tasks SET title=COALESCE(?,title),is_done=COALESCE(?,is_done),category=COALESCE(?,category) WHERE id=? AND project_id=?')
+    .run(title, is_done != null ? (is_done ? 1 : 0) : null, category, req.params.taskId, req.params.id);
   const updated = db.prepare('SELECT * FROM tasks WHERE id=?').get(req.params.taskId);
   if (existing && updated && !existing.is_done && updated.is_done) {
     logActivity({ actorId: req.user.id, projectId: req.params.id, type: 'task_completed', data: { taskId: updated.id, title: updated.title } });

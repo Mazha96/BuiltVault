@@ -1,13 +1,21 @@
 import { useRef, useState } from 'react';
 import api from '../api';
 
+const ACCEPT = 'image/jpeg,image/png,image/webp,image/gif';
+const HEIC_MSG = "HEIC isn't supported, export as JPG";
+const isHeic = (f) => /\.(heic|heif)$/i.test(f.name || '') || /image\/hei[cf]/i.test(f.type || '');
+
 export default function ImageUploader({ images = [], onChange, max = 5 }) {
   const inputRef = useRef();
   const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
 
   async function handleFiles(e) {
-    const files = Array.from(e.target.files);
-    if (!files.length) return;
+    const picked = Array.from(e.target.files);
+    if (!picked.length) return;
+    const files = picked.filter(f => !isHeic(f));
+    setError(files.length < picked.length ? HEIC_MSG : '');
+    if (!files.length) { e.target.value = ''; return; }
     const remaining = max - images.length;
     const toUpload = files.slice(0, remaining);
     setUploading(true);
@@ -19,7 +27,7 @@ export default function ImageUploader({ images = [], onChange, max = 5 }) {
       });
       onChange([...images, ...res.data.urls]);
     } catch (err) {
-      alert(err.response?.data?.error || 'Upload failed');
+      setError(err.response?.data?.error || 'Upload failed');
     } finally {
       setUploading(false);
       e.target.value = '';
@@ -52,7 +60,7 @@ export default function ImageUploader({ images = [], onChange, max = 5 }) {
       {/* Upload button */}
       {images.length < max && (
         <div>
-          <input ref={inputRef} type="file" accept="image/*,.heic,.heif" multiple style={{ display: 'none' }} onChange={handleFiles} />
+          <input ref={inputRef} type="file" accept={ACCEPT} multiple style={{ display: 'none' }} onChange={handleFiles} />
           <button type="button" onClick={() => inputRef.current.click()} disabled={uploading} style={{
             display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px',
             background: 'rgba(255,255,255,0.05)', border: '1px dashed #1e2a3a',
@@ -62,6 +70,7 @@ export default function ImageUploader({ images = [], onChange, max = 5 }) {
           </button>
         </div>
       )}
+      {error && <p role="alert" style={{ color: '#ff2d78', fontSize: 12, margin: '6px 0 0' }}>{error}</p>}
     </div>
   );
 }

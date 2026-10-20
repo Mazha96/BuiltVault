@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getComments, addComment, deleteComment } from '../api';
+import { Trash2 } from 'lucide-react';
+import api, { getComments, addComment, deleteComment } from '../api';
+import { useAuth } from '../context/AuthContext';
+import { parseDbDate } from '../utils/format';
 
 const TYPE_META = {
   file_upload:    { label: 'Uploaded a file',        emoji: '📎', color: '#00d4ff' },
@@ -11,7 +14,7 @@ const TYPE_META = {
 };
 
 const timeAgo = (ts) => {
-  const diff = Date.now() - new Date(ts).getTime();
+  const diff = Date.now() - parseDbDate(ts).getTime();
   const m = Math.floor(diff / 60000);
   if (m < 1) return 'just now';
   if (m < 60) return `${m}m ago`;
@@ -20,39 +23,102 @@ const timeAgo = (ts) => {
   return `${Math.floor(h / 24)}d ago`;
 };
 
-export default function PostCard({ post, currentUserId }) {
+const VIDEO_EXT = /\.(mp4|webm|mov|m4v)(\?.*)?$/i;
+
+function parseData(raw) {
+  if (raw && typeof raw === 'object') return raw;
+  try { return JSON.parse(raw || '{}') || {}; } catch { return {}; }
+}
+
+const smallBtn = {
+  background: 'none', border: '1px solid #1e2a3a', borderRadius: 6,
+  padding: '3px 8px', cursor: 'pointer', fontSize: 12,
+};
+
+// projectOwnerId is optional: when given, the project owner can also delete the post.
+export default function PostCard({ post, currentUserId, projectOwnerId, onDeleted }) {
+  const { user } = useAuth();
   const [showComments, setShowComments] = useState(false);
   const [comments, setComments] = useState([]);
+  const [commentsError, setCommentsError] = useState('');
+  const [commentsLoading, setCommentsLoading] = useState(false);
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [deleted, setDeleted] = useState(false);
 
   const meta = TYPE_META[post.type] || { label: post.type, emoji: '✨', color: '#00d4ff' };
   const displayName = post.display_name || post.username;
-  const data = typeof post.data === 'string' ? JSON.parse(post.data || '{}') : (post.data || {});
+  const data = parseData(post.data);
+  const myId = user?.id || currentUserId;
+  const canDelete = !!user && (
+    String(post.user_id) === String(user.id) ||
+    user.role === 'supermod' ||
+    (projectOwnerId != null && String(projectOwnerId) === String(user.id))
+  );
 
-  async function loadComments() {
-    if (!showComments) {
-      const res = await getComments(post.id);
-      setComments(res.data);
-    }
-    setShowComments(!showComments);
+  const isVideo = post.type === 'file_upload' && !!data.url &&
+    (data.file_type === 'video' || VIDEO_EXT.test(data.url));
+  const isImage = post.type === 'file_upload' && !!data.url && !isVideo && data.file_type === 'image';
+
+  function loadComments() {
+    if (showComments) { setShowComments(false); return; }
+    setShowComments(true);
+    setCommentsError('');
+    setCommentsLoading(true);
+    getComments(post.id)
+      .then(res => setComments(res.data))
+      .catch(err => {
+        console.debug('Failed to load comments', err);
+        setCommentsError("Couldn't load comments.");
+      })
+      .finally(() => setCommentsLoading(false));
   }
 
   async function submitComment(e) {
     e.preventDefault();
-    if (!newComment.trim()) return;
+    if (!user || !newComment.trim()) return;
     setLoading(true);
+    setCommentsError('');
     try {
       const res = await addComment(post.id, newComment.trim());
       setComments(prev => [...prev, res.data]);
       setNewComment('');
+    } catch (err) {
+      setCommentsError(err.response?.data?.error || "Couldn't post comment.");
     } finally { setLoading(false); }
   }
 
   async function handleDeleteComment(commentId) {
-    await deleteComment(post.id, commentId);
-    setComments(prev => prev.filter(c => c.id !== commentId));
+    try {
+      await deleteComment(post.id, commentId);
+      setComments(prev => prev.filter(c => c.id !== commentId));
+    } catch (err) {
+      setCommentsError(err.response?.data?.error || "Couldn't delete comment.");
+    }
   }
+
+  async function handleDeletePost() {
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      await api.delete(`/posts/${post.id}`);
+      setDeleted(true);
+      onDeleted?.(post.id);
+    } catch (err) {
+      setDeleteError(err.response?.data?.error || "Couldn't delete post.");
+      setConfirmingDelete(false);
+    } finally { setDeleting(false); }
+  }
+
+  if (deleted && !onDeleted) return null;
+
+  const commentCount = Number(post.comment_count) || 0;
+  const commentLabel = commentCount > 0
+    ? `${commentCount} comment${commentCount !== 1 ? 's' : ''}`
+    : (user ? 'Add comment' : 'Comments');
 
   return (
     <div style={{
@@ -61,7 +127,7 @@ export default function PostCard({ post, currentUserId }) {
     }}>
       {/* Header */}
       <div style={{ padding: '14px 16px 0' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
           {/* Avatar */}
           <div style={{
             width: 38, height: 38, borderRadius: '50%', background: '#00d4ff22',
@@ -97,7 +163,32 @@ export default function PostCard({ post, currentUserId }) {
           }}>
             {meta.emoji} {post.type?.replace('_', ' ')}
           </span>
+
+          {canDelete && (
+            confirmingDelete ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                <span style={{ color: '#8892a4', fontSize: 12 }}>Delete?</span>
+                <button type="button" onClick={handleDeletePost} disabled={deleting}
+                  style={{ ...smallBtn, borderColor: '#ff2d7866', color: '#ff2d78', fontWeight: 700 }}>
+                  {deleting ? '…' : 'Yes'}
+                </button>
+                <button type="button" onClick={() => setConfirmingDelete(false)} disabled={deleting}
+                  style={{ ...smallBtn, color: '#8892a4' }}>No</button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => { setDeleteError(''); setConfirmingDelete(true); }}
+                title="Delete post" aria-label="Delete post"
+                style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: 4, display: 'flex', flexShrink: 0 }}
+                onMouseOver={e => e.currentTarget.style.color = '#ff2d78'}
+                onMouseOut={e => e.currentTarget.style.color = '#6b7280'}>
+                <Trash2 size={15} />
+              </button>
+            )
+          )}
         </div>
+        {deleteError && (
+          <p style={{ color: '#ff2d78', fontSize: 12, margin: '0 0 8px' }}>{deleteError}</p>
+        )}
 
         {/* Caption */}
         {post.caption && (
@@ -135,9 +226,15 @@ export default function PostCard({ post, currentUserId }) {
         <img src={data.cover_url} alt="cover update"
           style={{ width: '100%', maxHeight: 360, objectFit: 'contain', background: '#000', display: 'block', margin: '8px 0' }} />
       )}
-      {(post.type === 'file_upload' && data.file_type === 'image' && data.url) && (
-        <img src={data.url} alt={data.name}
+      {isImage && (
+        <img src={data.url} alt={data.name || 'uploaded image'} loading="lazy"
           style={{ width: '100%', maxHeight: 360, objectFit: 'contain', background: '#000', display: 'block', margin: '8px 0' }} />
+      )}
+      {isVideo && (
+        <div style={{ padding: '0 16px', margin: '8px 0' }}>
+          <video src={data.url} controls preload="metadata" playsInline
+            style={{ width: '100%', maxHeight: 420, borderRadius: 8, background: '#000', display: 'block' }} />
+        </div>
       )}
 
       {/* Footer */}
@@ -146,12 +243,21 @@ export default function PostCard({ post, currentUserId }) {
           background: 'none', border: 'none', color: '#8892a4', cursor: 'pointer', fontSize: 13,
           display: 'flex', alignItems: 'center', gap: 6, padding: 0
         }}>
-          💬 {post.comment_count > 0 ? `${post.comment_count} comment${post.comment_count !== 1 ? 's' : ''}` : 'Add comment'}
+          💬 {commentLabel}
         </button>
 
         {/* Comments section */}
         {showComments && (
           <div style={{ marginTop: 12 }}>
+            {commentsError && (
+              <p style={{ color: '#ff2d78', fontSize: 12, margin: '0 0 8px' }}>{commentsError}</p>
+            )}
+            {commentsLoading && (
+              <p style={{ color: '#6b7280', fontSize: 13, margin: '0 0 8px' }}>Loading comments…</p>
+            )}
+            {!user && !commentsLoading && comments.length === 0 && !commentsError && (
+              <p style={{ color: '#6b7280', fontSize: 13, margin: '0 0 8px' }}>No comments yet.</p>
+            )}
             {comments.map(c => (
               <div key={c.id} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
                 <div style={{
@@ -168,11 +274,12 @@ export default function PostCard({ post, currentUserId }) {
                   <span style={{ color: '#8892a4', fontSize: 11, marginLeft: 6 }}>{timeAgo(c.created_at)}</span>
                   <p style={{ color: '#c9d1d9', margin: '4px 0 0', fontSize: 13, lineHeight: 1.5 }}>{c.comment}</p>
                 </div>
-                {c.user_id === currentUserId && (
+                {user && String(c.user_id) === String(myId) && (
                   <button onClick={() => handleDeleteComment(c.id)} style={{ background: 'none', border: 'none', color: '#ff2d78', cursor: 'pointer', fontSize: 12, alignSelf: 'flex-start' }}>✕</button>
                 )}
               </div>
             ))}
+            {user ? (
             <form onSubmit={submitComment} style={{ display: 'flex', gap: 8, marginTop: 8 }}>
               <input
                 value={newComment} onChange={e => setNewComment(e.target.value)}
@@ -187,6 +294,11 @@ export default function PostCard({ post, currentUserId }) {
                 borderRadius: 8, padding: '8px 16px', fontWeight: 700, cursor: 'pointer', fontSize: 13
               }}>{loading ? '…' : 'Post'}</button>
             </form>
+            ) : (
+              <p style={{ color: '#6b7280', fontSize: 12, margin: '8px 0 0' }}>
+                <Link to="/sign-in" style={{ color: '#00d4ff', textDecoration: 'none' }}>Sign in</Link> to join the conversation.
+              </p>
+            )}
           </div>
         )}
       </div>

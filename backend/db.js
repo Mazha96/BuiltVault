@@ -1,8 +1,8 @@
 const Database = require('better-sqlite3');
 const path = require('path');
-require('dotenv').config();
+const { DB_PATH } = require('./lib/paths');
 
-const db = new Database(process.env.DB_PATH || './buildvault.db');
+const db = new Database(DB_PATH);
 
 db.exec(`
   PRAGMA journal_mode=WAL;
@@ -163,5 +163,111 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_points_user_date ON points_transactions(user_id, date);
   CREATE INDEX IF NOT EXISTS idx_points_project ON points_transactions(project_id);
 `);
+
+// ---------------------------------------------------------------------------
+// Tables that were created on the live server but never added to this file.
+// Definitions match the production schema (dumped 2026-10-20).
+// ---------------------------------------------------------------------------
+db.exec(`
+  CREATE TABLE IF NOT EXISTS community_posts (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'general',
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    project_id TEXT DEFAULT NULL,
+    is_deleted INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    images TEXT DEFAULT '[]',
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS community_replies (
+    id TEXT PRIMARY KEY,
+    post_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    body TEXT NOT NULL,
+    is_deleted INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    images TEXT DEFAULT '[]',
+    FOREIGN KEY (post_id) REFERENCES community_posts(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS notifications (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    data TEXT DEFAULT '{}',
+    is_read INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, is_read);
+
+  CREATE TABLE IF NOT EXISTS time_logs (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    duration_minutes INTEGER NOT NULL,
+    notes TEXT DEFAULT '',
+    logged_at TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    focus_session INTEGER DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS achievements (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    milestone INTEGER,
+    unlocked_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_posts_project ON posts(project_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_activity_project ON activity_log(project_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
+  CREATE INDEX IF NOT EXISTS idx_bom_project ON bom_items(project_id);
+`);
+
+// Add a column only if it is missing, so this file is safe to run against both a fresh
+// database and the existing production one.
+function addColumn(table, column, definition) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name);
+  if (!cols.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+
+// Columns added on the server over time
+addColumn('users', 'role', "TEXT DEFAULT 'user'");
+addColumn('projects', 'tags', "TEXT DEFAULT '[]'");
+addColumn('inventory_parts', 'source', "TEXT DEFAULT 'manual'");
+addColumn('inventory_parts', 'order_date', 'TEXT');
+addColumn('inventory_parts', 'order_id', 'TEXT');
+addColumn('inventory_parts', 'category', "TEXT DEFAULT 'other'");
+addColumn('inventory_parts', 'subcategory', 'TEXT');
+addColumn('inventory_parts', 'import_status', "TEXT DEFAULT 'confirmed'");
+
+// Portfolio profile fields
+addColumn('users', 'headline', "TEXT DEFAULT ''");
+addColumn('users', 'location', "TEXT DEFAULT ''");
+addColumn('users', 'github_url', "TEXT DEFAULT ''");
+addColumn('users', 'website_url', "TEXT DEFAULT ''");
+addColumn('users', 'resume_url', "TEXT DEFAULT ''");
+addColumn('users', 'linkedin_url', "TEXT DEFAULT ''");
+
+// How much of each BOM line was actually taken from inventory when the project was completed
+addColumn('bom_items', 'deducted_qty', 'REAL DEFAULT 0');
+// 1 once a completion was recorded with deducted_qty. Projects completed by the older code have 0,
+// so reopening them restores the full BOM qty, which is what the old code took out.
+addColumn('projects', 'stock_ledger', 'INTEGER DEFAULT 0');
+
+// Proof links on each project
+addColumn('projects', 'repo_url', "TEXT DEFAULT ''");
+addColumn('projects', 'demo_url', "TEXT DEFAULT ''");
+
+// Featured (pinned) projects on the public profile
+addColumn('projects', 'is_featured', 'INTEGER DEFAULT 0');
+addColumn('projects', 'featured_order', 'INTEGER DEFAULT 0');
 
 module.exports = db;

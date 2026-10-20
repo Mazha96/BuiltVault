@@ -35,24 +35,73 @@ function fmtDate(iso) {
 
 const QUICK_DURATIONS = [15, 30, 45, 60, 90, 120];
 
+// Read-only summary for visitors (uses the public, no-auth endpoint).
+function PublicTimeSummary({ data, error }) {
+  if (error || !data) {
+    return (
+      <div style={{ ...s.card, color: '#6b7280', fontSize: '0.875rem', textAlign: 'center', padding: '2rem' }}>
+        Time stats are not available for this project.
+      </div>
+    );
+  }
+  const { logs = [], totalMinutes = 0, sessionCount = 0, activeDays = 0 } = data;
+  return (
+    <div>
+      <div style={s.statsGrid}>
+        <div style={s.statCard}>
+          <div style={{ ...s.statVal, color: '#00d4ff' }}>{fmtMins(totalMinutes)}</div>
+          <div style={s.statLabel}>Total Time</div>
+        </div>
+        <div style={s.statCard}>
+          <div style={{ ...s.statVal, color: '#ff2d78' }}>{sessionCount}</div>
+          <div style={s.statLabel}>Sessions</div>
+        </div>
+        <div style={s.statCard}>
+          <div style={{ ...s.statVal, color: '#a78bfa' }}>{activeDays}</div>
+          <div style={s.statLabel}>Active Days</div>
+        </div>
+      </div>
+      <div style={s.card}>
+        <div style={s.h3}><Clock size={12} style={{ display: 'inline', marginRight: 4 }} />Recent Sessions</div>
+        {logs.length === 0 && (
+          <div style={{ color: '#4b5563', fontSize: '0.875rem', textAlign: 'center', padding: '2rem' }}>No work sessions logged yet.</div>
+        )}
+        {logs.slice(0, 10).map((log, i) => (
+          <div key={`${log.logged_at}-${i}`} style={{ ...s.logRow, alignItems: 'center' }}>
+            <div style={s.duration}>{fmtMins(log.duration_minutes)}</div>
+            <div style={{ ...s.meta, marginTop: 0, fontSize: '0.8rem', color: '#6b7280' }}>{fmtDate(log.logged_at)}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function TimeLogTab({ projectId, isOwner }) {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // Owners get their full log + streaks; visitors get the public read-only summary.
+  const [reloadKey, setReloadKey] = useState(0);
+  const requestKey = `${projectId}|${isOwner ? 'owner' : 'public'}|${reloadKey}`;
+  const [result, setResult] = useState({ key: null, data: null, error: '' });
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ duration_minutes: '', notes: '', logged_at: '' });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [quickMin, setQuickMin] = useState(null);
 
-  const load = () => {
-    setLoading(true);
-    api.get(`/timelogs/${projectId}`)
-      .then(r => setData(r.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  };
+  useEffect(() => {
+    let cancelled = false;
+    const url = isOwner ? `/timelogs/${projectId}` : `/timelogs/${projectId}/public`;
+    api.get(url)
+      .then(r => { if (!cancelled) setResult({ key: requestKey, data: r.data, error: '' }); })
+      .catch(err => {
+        if (!cancelled) setResult({ key: requestKey, data: null, error: err.response?.data?.error || 'Could not load time logs' });
+      });
+    return () => { cancelled = true; };
+  }, [projectId, isOwner, requestKey]);
 
-  useEffect(() => { load(); }, [projectId]);
+  const load = () => setReloadKey(k => k + 1);
+  const loading = result.key !== requestKey;
+  const data = result.data;
 
   function pickQuick(mins) {
     setQuickMin(mins);
@@ -85,6 +134,8 @@ export default function TimeLogTab({ projectId, isOwner }) {
   }
 
   if (loading) return <div style={{ color: '#6b7280', textAlign: 'center', padding: '3rem' }}>Loading…</div>;
+
+  if (!isOwner) return <PublicTimeSummary data={data} error={result.error} />;
 
   const { logs = [], totalMinutes = 0, weeklyMinutes = 0, streak = 0, bestStreak = 0, chartData = [], achievements = [] } = data || {};
 

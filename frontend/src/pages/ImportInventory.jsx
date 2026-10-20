@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
-import { Upload, ChevronLeft, CheckCircle, XCircle, AlertCircle, Package, Zap } from 'lucide-react';
+import { Upload, ChevronLeft, CheckCircle, XCircle, Package } from 'lucide-react';
 
 const SOURCES = [
   { id: 'amazon',    label: 'Amazon',    color: '#ff9900', steps: ['Go to amazon.com/gp/b2b/reports', 'Select date range → Report type: "Items"', 'Download CSV'] },

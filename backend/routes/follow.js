@@ -11,8 +11,8 @@ const router = express.Router();
 router.post('/users/:userId', auth, (req, res) => {
   try {
     const { userId } = req.params;
-    console.log('follow user request', req.user.id, '->', userId);
     if (userId === req.user.id) return res.status(400).json({ error: 'Cannot follow yourself' });
+    if (!db.prepare('SELECT 1 FROM users WHERE id=?').get(userId)) return res.status(404).json({ error: 'User not found' });
     db.prepare('INSERT OR IGNORE INTO follows_users (id, follower_id, following_id) VALUES (?,?,?)')
       .run(uuid(), req.user.id, userId);
     // Notify the followed user
@@ -39,7 +39,9 @@ router.delete('/users/:userId', auth, (req, res) => {
 // Follow a project
 router.post('/projects/:projectId', auth, (req, res) => {
   try {
-    console.log('follow project request', req.user.id, '->', req.params.projectId);
+    const target = db.prepare('SELECT user_id, is_public FROM projects WHERE id=?').get(req.params.projectId);
+    if (!target) return res.status(404).json({ error: 'Not found' });
+    if (!target.is_public && target.user_id !== req.user.id) return res.status(403).json({ error: 'Private project' });
     db.prepare('INSERT OR IGNORE INTO follows_projects (id, user_id, project_id) VALUES (?,?,?)')
       .run(uuid(), req.user.id, req.params.projectId);
     // Notify the project owner

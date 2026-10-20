@@ -6,7 +6,7 @@ const router = express.Router();
 
 // GET /api/users/me — own profile with stats
 router.get('/me', auth, (req, res) => {
-  const user = db.prepare('SELECT id, username, email, bio, avatar_url, created_at, display_name FROM users WHERE id=?').get(req.user.id);
+  const user = db.prepare('SELECT id, username, email, bio, avatar_url, created_at, display_name, headline, location, github_url, website_url, resume_url, linkedin_url FROM users WHERE id=?').get(req.user.id);
   if (!user) return res.status(404).json({ error: 'Not found' });
 
   const followers = db.prepare('SELECT COUNT(*) as c FROM follows_users WHERE following_id=?').get(req.user.id).c;
@@ -34,8 +34,8 @@ router.get('/me', auth, (req, res) => {
     FROM follows_projects f
     JOIN projects p ON f.project_id = p.id
     JOIN users u ON p.user_id = u.id
-    WHERE f.user_id = ?
-  `).all(req.user.id);
+    WHERE f.user_id = ? AND (p.is_public = 1 OR p.user_id = ?)
+  `).all(req.user.id, req.user.id);
 
   res.json({
     ...user,
@@ -46,18 +46,32 @@ router.get('/me', auth, (req, res) => {
   });
 });
 
-// PATCH /api/users/me — update display name / bio
+const { cleanUrl } = require('../lib/url');
+const LINK_FIELDS = ['github_url', 'website_url', 'resume_url', 'linkedin_url'];
+
+// PATCH /api/users/me — update display name, bio, headline, location and links
 router.patch('/me', auth, (req, res) => {
-  const { display_name, bio } = req.body;
+  const { display_name, bio, headline, location } = req.body;
+  // Validate everything first, then write in one transaction: a 400 never leaves a half-saved profile.
+  const updates = {};
+  for (const f of LINK_FIELDS) {
+    if (req.body[f] === undefined) continue;
+    const v = cleanUrl(req.body[f]);
+    if (v === null) return res.status(400).json({ error: `${f} must be a valid http(s) link` });
+    updates[f] = v;
+  }
   if (display_name !== undefined) {
-    const value = display_name.trim();
+    const value = String(display_name).trim();
     if (value.length < 2 || value.length > 40) return res.status(400).json({ error: 'Display name must be 2-40 characters' });
-    db.prepare('UPDATE users SET display_name=? WHERE id=?').run(value, req.user.id);
+    updates.display_name = value;
   }
-  if (bio !== undefined) {
-    db.prepare('UPDATE users SET bio=? WHERE id=?').run(bio.slice(0, 280), req.user.id);
-  }
-  const user = db.prepare('SELECT id, username, email, bio, avatar_url, created_at, display_name FROM users WHERE id=?').get(req.user.id);
+  if (headline !== undefined) updates.headline = String(headline).trim().slice(0, 120);
+  if (location !== undefined) updates.location = String(location).trim().slice(0, 60);
+  if (bio !== undefined) updates.bio = String(bio).slice(0, 280);
+  db.transaction(() => {
+    for (const [col, val] of Object.entries(updates)) db.prepare(`UPDATE users SET ${col}=? WHERE id=?`).run(val, req.user.id);
+  })();
+  const user = db.prepare('SELECT id, username, email, bio, avatar_url, created_at, display_name, headline, location, github_url, website_url, resume_url, linkedin_url FROM users WHERE id=?').get(req.user.id);
   res.json(user);
 });
 
@@ -69,8 +83,8 @@ router.get('/:id', async (req, res) => {
 
   // Support /u/:username by looking up by username if param doesn't look like a Clerk ID
   const user = param.startsWith('user_')
-    ? db.prepare('SELECT id, username, display_name, avatar_url, bio, created_at FROM users WHERE id=?').get(param)
-    : db.prepare('SELECT id, username, display_name, avatar_url, bio, created_at FROM users WHERE username=?').get(param);
+    ? db.prepare('SELECT id, username, display_name, avatar_url, bio, created_at, headline, location, github_url, website_url, resume_url, linkedin_url FROM users WHERE id=?').get(param)
+    : db.prepare('SELECT id, username, display_name, avatar_url, bio, created_at, headline, location, github_url, website_url, resume_url, linkedin_url FROM users WHERE username=? COLLATE NOCASE').get(param);
 
   if (!user) return res.status(404).json({ error: 'User not found' });
 
@@ -94,12 +108,13 @@ router.get('/:id', async (req, res) => {
   const projects = db.prepare(`
     SELECT p.*,
       COALESCE(SUM(pt.points),0) as total_points,
-      (SELECT COUNT(*) FROM follows_projects fp WHERE fp.project_id=p.id) as followers_count
+      (SELECT COUNT(*) FROM follows_projects fp WHERE fp.project_id=p.id) as followers_count,
+      (SELECT CAST(ROUND(100.0 * SUM(t.is_done) / COUNT(*)) AS INTEGER) FROM tasks t WHERE t.project_id=p.id) as progress
     FROM projects p
     LEFT JOIN points_transactions pt ON pt.project_id=p.id
     WHERE p.user_id=? AND p.is_public=1
     GROUP BY p.id
-    ORDER BY p.updated_at DESC
+    ORDER BY p.is_featured DESC, p.featured_order ASC, p.updated_at DESC
   `).all(user.id);
 
   res.json({ ...user, stats: { followers, following, projects: projects.length }, isFollowing, projects });
