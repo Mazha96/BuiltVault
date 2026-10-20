@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api';
-import { CheckSquare, Square, Plus, Trash2, DollarSign, FileText, Upload, Globe, Lock, Printer, ArrowLeft, Edit2, Check, X, Star, ExternalLink } from 'lucide-react';
+import { CheckSquare, Square, Plus, Trash2, DollarSign, FileText, Upload, Globe, Lock, Printer, ArrowLeft, Edit2, Check, X, Star, ExternalLink, Github, PlayCircle } from 'lucide-react';
 import CoverUploader from '../components/CoverUploader';
 import PostCard from '../components/PostCard';
 import TimeLogTab from '../components/TimeLogTab';
@@ -386,6 +386,7 @@ export default function ProjectDetail() {
             {tags.map(t => <span key={t} style={s.tag('#00d4ff')}>#{t}</span>)}
           </div>
         )}
+        <ProjectLinks project={project} isOwner={isOwner} onSaved={load} />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
           <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>{project.followers_count || 0} follower{(project.followers_count || 0) === 1 ? '' : 's'}</span>
@@ -782,7 +783,8 @@ export default function ProjectDetail() {
             </div>
           ) : (
             history.map(post => (
-              <PostCard key={post.id} post={post} currentUserId={user?.id} />
+              <PostCard key={post.id} post={post} currentUserId={user?.id} projectOwnerId={project.user_id}
+                onDeleted={pid => setHistory(h => h.filter(x => x.id !== pid))} />
             ))
           )}
         </div>
@@ -804,6 +806,71 @@ export default function ProjectDetail() {
         />
       )}
 
+    </div>
+  );
+}
+
+// "View code" / "Watch demo" buttons: the quickest proof for a visitor that the project is real.
+// The owner can edit both links inline (backend accepts http/https only).
+function ProjectLinks({ project, isOwner, onSaved }) {
+  const [editing, setEditing] = useState(false);
+  const [repo, setRepo] = useState(project.repo_url || '');
+  const [demo, setDemo] = useState(project.demo_url || '');
+  const [err, setErr] = useState('');
+  const [saving, setSaving] = useState(false);
+  const btn = {
+    display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0.45rem 0.9rem', borderRadius: 8,
+    fontSize: '0.85rem', fontWeight: 600, textDecoration: 'none', border: '1px solid rgba(0,212,255,0.35)',
+    background: 'rgba(0,212,255,0.1)', color: '#e2e8f0', cursor: 'pointer',
+  };
+  const input = {
+    width: '100%', padding: '0.45rem 0.6rem', borderRadius: 8, background: '#0a0e1a', color: '#e2e8f0',
+    border: '1px solid rgba(255,255,255,0.12)', fontSize: '0.85rem',
+  };
+
+  async function save() {
+    setSaving(true); setErr('');
+    try {
+      await api.put(`/projects/${project.id}`, { repo_url: repo, demo_url: demo });
+      setEditing(false);
+      onSaved?.();
+    } catch (e) {
+      setErr(e.response?.data?.error || 'Could not save links');
+    } finally { setSaving(false); }
+  }
+
+  const hasAny = project.repo_url || project.demo_url;
+  if (!hasAny && !isOwner) return null;
+
+  if (editing) {
+    return (
+      <div style={{ display: 'grid', gap: 8, marginBottom: '1rem', maxWidth: 520 }}>
+        <input style={input} placeholder="Code repo (e.g. github.com/you/project)" value={repo} onChange={e => setRepo(e.target.value)} />
+        <input style={input} placeholder="Demo video (YouTube, Drive...)" value={demo} onChange={e => setDemo(e.target.value)} />
+        {err && <span style={{ color: '#ff2d78', fontSize: '0.8rem' }}>{err}</span>}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button style={btn} onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save links'}</button>
+          <button style={{ ...btn, background: 'transparent', border: '1px solid rgba(255,255,255,0.12)' }} onClick={() => setEditing(false)}>Cancel</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: '1rem' }}>
+      {project.repo_url && (
+        <a href={project.repo_url} target="_blank" rel="noopener noreferrer" style={btn}><Github size={15} /> View code</a>
+      )}
+      {project.demo_url && (
+        <a href={project.demo_url} target="_blank" rel="noopener noreferrer" style={{ ...btn, border: '1px solid rgba(255,45,120,0.4)', background: 'rgba(255,45,120,0.1)' }}>
+          <PlayCircle size={15} /> Watch demo
+        </a>
+      )}
+      {isOwner && (
+        <button style={{ ...btn, background: 'transparent', border: '1px dashed rgba(255,255,255,0.2)', color: '#9ca3af' }} onClick={() => setEditing(true)}>
+          {hasAny ? 'Edit links' : '+ Add code / demo links'}
+        </button>
+      )}
     </div>
   );
 }
