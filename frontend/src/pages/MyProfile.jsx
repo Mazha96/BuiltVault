@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ExternalLink, Link2, Check, Pencil, MapPin, Github, Linkedin, Globe, FileText, Lock } from 'lucide-react';
 import ProjectCoverCard from '../components/ProjectCoverCard';
 import api from '../api';
+import { profilePath } from '../utils/format';
 
 const HEADING = { fontFamily: 'Rajdhani, sans-serif', letterSpacing: 0.5 };
 const GRID = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14 };
@@ -146,7 +147,7 @@ export default function MyProfile() {
   }
 
   async function copyLink() {
-    const ok = await copyText(`${window.location.origin}/u/${profile.username}`);
+    const ok = await copyText(`${window.location.origin}${profilePath(profile.username, profile.id)}`);
     setCopied(ok ? 'ok' : 'fail');
     clearTimeout(timers.current.copy);
     timers.current.copy = setTimeout(() => setCopied(null), 2000);
@@ -158,7 +159,7 @@ export default function MyProfile() {
   }
 
   const displayName = profile.display_name || profile.username;
-  const publicPath = `/u/${profile.username}`;
+  const publicPath = profilePath(profile.username, profile.id);
   const links = URL_FIELDS.filter(l => isHttpUrl(profile[l.key]));
   const followerUsers = profile.followerUsers || [];
   const followingUsers = profile.followingUsers || [];
@@ -435,7 +436,7 @@ function UserRow({ user, children }) {
           : <span style={{ color: '#00d4ff', fontWeight: 700 }}>{displayName?.[0]?.toUpperCase()}</span>
         }
       </div>
-      <Link to={user.username ? `/u/${user.username}` : `/users/${user.id}`} style={{ flex: 1, minWidth: 0, textDecoration: 'none' }}>
+      <Link to={profilePath(user.username, user.id)} style={{ flex: 1, minWidth: 0, textDecoration: 'none' }}>
         <div style={{ color: '#e2e8f0', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</div>
         <div style={{ color: '#8892a4', fontSize: 13 }}>@{user.username}</div>
       </Link>

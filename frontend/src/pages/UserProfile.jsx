@@ -4,6 +4,7 @@ import { MapPin, Github, Linkedin, Globe, FileText, Share2, Check, CalendarDays 
 import ProjectCoverCard from '../components/ProjectCoverCard';
 import { useAuth } from '../context/AuthContext';
 import api from '../api';
+import { profilePath } from '../utils/format';
 
 const HEADING = { fontFamily: 'Rajdhani, sans-serif', letterSpacing: 0.5 };
 const GRID = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 };
@@ -134,7 +135,7 @@ export default function UserProfile() {
   }
 
   async function shareProfile() {
-    const ok = await copyText(`${window.location.origin}/u/${profile.username}`);
+    const ok = await copyText(`${window.location.origin}${profilePath(profile.username, profile.id)}`);
     setCopied(ok ? 'ok' : 'fail');
     clearTimeout(copyTimer.current);
     copyTimer.current = setTimeout(() => setCopied(null), 2000);

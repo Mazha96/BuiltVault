@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Trash2 } from 'lucide-react';
 import api, { getComments, addComment, deleteComment } from '../api';
 import { useAuth } from '../context/AuthContext';
+import { parseDbDate } from '../utils/format';
 
 const TYPE_META = {
   file_upload:    { label: 'Uploaded a file',        emoji: '📎', color: '#00d4ff' },
@@ -13,7 +14,7 @@ const TYPE_META = {
 };
 
 const timeAgo = (ts) => {
-  const diff = Date.now() - new Date(ts).getTime();
+  const diff = Date.now() - parseDbDate(ts).getTime();
   const m = Math.floor(diff / 60000);
   if (m < 1) return 'just now';
   if (m < 60) return `${m}m ago`;
@@ -126,7 +127,7 @@ export default function PostCard({ post, currentUserId, projectOwnerId, onDelete
     }}>
       {/* Header */}
       <div style={{ padding: '14px 16px 0' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
           {/* Avatar */}
           <div style={{
             width: 38, height: 38, borderRadius: '50%', background: '#00d4ff22',

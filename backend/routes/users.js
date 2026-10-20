@@ -105,7 +105,8 @@ router.get('/:id', async (req, res) => {
   const projects = db.prepare(`
     SELECT p.*,
       COALESCE(SUM(pt.points),0) as total_points,
-      (SELECT COUNT(*) FROM follows_projects fp WHERE fp.project_id=p.id) as followers_count
+      (SELECT COUNT(*) FROM follows_projects fp WHERE fp.project_id=p.id) as followers_count,
+      (SELECT CAST(ROUND(100.0 * SUM(t.is_done) / COUNT(*)) AS INTEGER) FROM tasks t WHERE t.project_id=p.id) as progress
     FROM projects p
     LEFT JOIN points_transactions pt ON pt.project_id=p.id
     WHERE p.user_id=? AND p.is_public=1

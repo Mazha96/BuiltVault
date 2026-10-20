@@ -2,6 +2,18 @@ import { useUser, useAuth as useClerkAuth } from '@clerk/clerk-react';
 import { useEffect, useState } from 'react';
 import api from '../api';
 
+// Every component that calls useAuth() needs the same /auth/me record. Share one request
+// per signed-in user instead of firing one per component (a feed of 50 posts = 50 calls).
+let meCache = { id: null, promise: null };
+function fetchMe(clerkId) {
+  if (meCache.id !== clerkId || !meCache.promise) {
+    const promise = api.get('/auth/me').then(r => r.data);
+    meCache = { id: clerkId, promise };
+    promise.catch(() => { if (meCache.promise === promise) meCache = { id: null, promise: null }; });
+  }
+  return meCache.promise;
+}
+
 export function useAuth() {
   const { user: clerkUser, isLoaded } = useUser();
   const { signOut, getToken } = useClerkAuth();
@@ -13,8 +25,8 @@ export function useAuth() {
   useEffect(() => {
     if (!clerkId) return;
     let cancelled = false;
-    api.get('/auth/me')
-      .then(r => { if (!cancelled) setDbState({ forId: clerkId, data: r.data }); })
+    fetchMe(clerkId)
+      .then(data => { if (!cancelled) setDbState({ forId: clerkId, data }); })
       .catch(err => console.debug('Could not load /auth/me', err));
     return () => { cancelled = true; };
   }, [clerkId]);

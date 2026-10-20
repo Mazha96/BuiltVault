@@ -8,6 +8,7 @@ import PostCard from '../components/PostCard';
 import TimeLogTab from '../components/TimeLogTab';
 import FocusMode from '../components/FocusMode';
 import { PROJECT_CATEGORIES, CATEGORY_EMOJI } from '../constants/categories';
+import { parseDbDate, profilePath as toProfilePath, isHttpUrl } from '../utils/format';
 
 const TASK_CATS = ['general','design','sourcing','build','testing','done'];
 const VIDEO_EXT = /\.(mp4|webm|mov|m4v)$/i;
@@ -36,7 +37,7 @@ const s = {
   desc: { color: '#9ca3af', fontSize: '0.875rem', marginBottom: '1rem', whiteSpace: 'pre-wrap', lineHeight: 1.6, overflowWrap: 'anywhere' },
   statsGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', marginBottom: '1rem' },
   statCard: { background: '#0d1224', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '0.875rem', textAlign: 'center' },
-  statVal: { fontSize: '1.5rem', fontWeight: 800, color: '#00d4ff' },
+  statVal: { fontSize: 'clamp(1.05rem, 4.5vw, 1.5rem)', fontWeight: 800, color: '#00d4ff', overflowWrap: 'anywhere' },
   statLabel: { fontSize: '0.7rem', color: '#6b7280', marginTop: 2 },
   progressBar: { height: 6, background: 'rgba(255,255,255,0.07)', borderRadius: 9999, marginBottom: '1.5rem', overflow: 'hidden' },
   progressFill: pct => ({ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg,#00d4ff,#ff2d78)', borderRadius: 9999 }),
@@ -154,10 +155,18 @@ export default function ProjectDetail() {
     return () => { cancelled = true; };
   }, [projectId, isOwner, projectIsPublic]);
 
-  const toggleTask = async task => {
+  // Owner actions: surface failures instead of failing silently.
+  const [actionError, setActionError] = useState('');
+  const guard = fn => async (...args) => {
+    setActionError('');
+    try { await fn(...args); }
+    catch (e) { setActionError(e.response?.data?.error || 'That didn\'t work. Please try again.'); }
+  };
+
+  const toggleTask = guard(async task => {
     await api.put(`/projects/${id}/tasks/${task.id}`, { is_done: !task.is_done });
     load();
-  };
+  });
 
   const handleFollowProject = async () => {
     if (!project || !user) return;
@@ -194,10 +203,10 @@ export default function ProjectDetail() {
     } finally { setAddingTask(false); }
   };
 
-  const deleteTask = async tid => {
+  const deleteTask = guard(async tid => {
     await api.delete(`/projects/${id}/tasks/${tid}`);
     load();
-  };
+  });
 
   const addBom = async e => {
     e.preventDefault();
@@ -209,15 +218,15 @@ export default function ProjectDetail() {
     } finally { setAddingBom(false); }
   };
 
-  const deleteBom = async bid => {
+  const deleteBom = guard(async bid => {
     await api.delete(`/projects/${id}/bom/${bid}`);
     load();
-  };
+  });
 
-  const togglePublic = async () => {
+  const togglePublic = guard(async () => {
     await api.put(`/projects/${id}`, { is_public: project.is_public ? 0 : 1 });
     load();
-  };
+  });
 
   const toggleFeatured = async () => {
     setFeatureError('');
@@ -241,11 +250,11 @@ export default function ProjectDetail() {
     } finally { setCategorySaving(false); }
   };
 
-  const saveTitle = async () => {
+  const saveTitle = guard(async () => {
     await api.put(`/projects/${id}`, { title: titleVal });
     setEditTitle(false);
     load();
-  };
+  });
 
   const uploadFile = async e => {
     const input = e.target;
@@ -273,14 +282,14 @@ export default function ProjectDetail() {
     }
   };
 
-  const deleteFile = async fid => {
+  const deleteFile = guard(async fid => {
     await api.delete(`/files/${id}/${fid}`);
     load();
-  };
+  });
 
   // Full-page loader only for the first load / switching projects; refreshes after edits keep the page.
   if (loading && (!project || String(project.id) !== String(id))) return <div style={{ padding: '4rem 1rem', textAlign: 'center', color: '#9ca3af' }}>Loading…</div>;
-  if (error) return <div style={{ padding: '4rem 1rem', textAlign: 'center', color: '#ff2d78' }}>{error}</div>;
+  if (error && !project) return <div style={{ padding: '4rem 1rem', textAlign: 'center', color: '#ff2d78' }}>{error}</div>;
   if (!project) return null;
 
   const tags = parseTags(project.tags);
@@ -292,7 +301,7 @@ export default function ProjectDetail() {
   const totalCost = Number(project.total_cost) || 0;
   const visitorTime = publicTime && publicTime.id === project.id ? publicTime.data : null;
   const creatorName = project.creator_display_name || project.username || 'Unknown';
-  const profilePath = `/u/${project.username || project.user_id}`;
+  const profilePath = toProfilePath(project.username, project.user_id);
   const categoryEmoji = CATEGORY_EMOJI[project.category] || CATEGORY_EMOJI.other || '🔧';
 
   // Visitors only see tabs that have something in them.
@@ -314,6 +323,11 @@ export default function ProjectDetail() {
 
   return (
     <div style={s.page}>
+      {(actionError || (error && project)) && (
+        <div role="alert" style={{ background: 'rgba(255,45,120,0.12)', border: '1px solid rgba(255,45,120,0.4)', color: '#ff8fb5', borderRadius: 8, padding: '0.6rem 0.9rem', marginBottom: '1rem', fontSize: '0.85rem' }}>
+          {actionError || error}
+        </div>
+      )}
       {isOwner ? (
         <Link to="/dashboard" style={s.back}><ArrowLeft size={14} /> Back to Dashboard</Link>
       ) : (
@@ -434,7 +448,7 @@ export default function ProjectDetail() {
 
         {/* Stats */}
         {stats.length > 0 && (
-          <div style={{ ...s.statsGrid, gridTemplateColumns: `repeat(${stats.length}, 1fr)` }}>
+          <div style={{ ...s.statsGrid, gridTemplateColumns: `repeat(${stats.length}, minmax(0, 1fr))` }}>
             {stats.map(st => (
               <div key={st.key} style={s.statCard}>
                 <div style={{ ...s.statVal, ...(st.color ? { color: st.color } : {}) }}>{st.val}</div>
@@ -493,7 +507,7 @@ export default function ProjectDetail() {
                 )}
               </div>
               <div><span style={s.infoLabel}>Status </span><span style={{ color: '#ff2d78' }}>{project.status}</span></div>
-              <div><span style={s.infoLabel}>Updated </span><span style={s.infoVal}>{new Date(project.updated_at).toLocaleDateString()}</span></div>
+              <div><span style={s.infoLabel}>Updated </span><span style={s.infoVal}>{parseDbDate(project.updated_at).toLocaleDateString()}</span></div>
               {isOwner && <div><span style={s.infoLabel}>Public </span><span style={s.infoVal}>{project.is_public ? 'Yes' : 'No'}</span></div>}
             </div>
           </div>
@@ -814,8 +828,9 @@ export default function ProjectDetail() {
 // The owner can edit both links inline (backend accepts http/https only).
 function ProjectLinks({ project, isOwner, onSaved }) {
   const [editing, setEditing] = useState(false);
-  const [repo, setRepo] = useState(project.repo_url || '');
-  const [demo, setDemo] = useState(project.demo_url || '');
+  const [repo, setRepo] = useState('');
+  const [demo, setDemo] = useState('');
+  const startEditing = () => { setRepo(project.repo_url || ''); setDemo(project.demo_url || ''); setErr(''); setEditing(true); };
   const [err, setErr] = useState('');
   const [saving, setSaving] = useState(false);
   const btn = {
@@ -858,16 +873,16 @@ function ProjectLinks({ project, isOwner, onSaved }) {
 
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: '1rem' }}>
-      {project.repo_url && (
+      {isHttpUrl(project.repo_url) && (
         <a href={project.repo_url} target="_blank" rel="noopener noreferrer" style={btn}><Github size={15} /> View code</a>
       )}
-      {project.demo_url && (
+      {isHttpUrl(project.demo_url) && (
         <a href={project.demo_url} target="_blank" rel="noopener noreferrer" style={{ ...btn, border: '1px solid rgba(255,45,120,0.4)', background: 'rgba(255,45,120,0.1)' }}>
           <PlayCircle size={15} /> Watch demo
         </a>
       )}
       {isOwner && (
-        <button style={{ ...btn, background: 'transparent', border: '1px dashed rgba(255,255,255,0.2)', color: '#9ca3af' }} onClick={() => setEditing(true)}>
+        <button style={{ ...btn, background: 'transparent', border: '1px dashed rgba(255,255,255,0.2)', color: '#9ca3af' }} onClick={startEditing}>
           {hasAny ? 'Edit links' : '+ Add code / demo links'}
         </button>
       )}

@@ -72,7 +72,7 @@ router.get('/', auth, (req, res) => {
 
 // Get single project (public or owned)
 router.get('/:id', async (req, res) => {
-  const project = db.prepare('SELECT p.*, u.username, u.avatar_url FROM projects p JOIN users u ON p.user_id=u.id WHERE p.id=?').get(req.params.id);
+  const project = db.prepare('SELECT p.*, u.username, u.display_name, u.avatar_url FROM projects p JOIN users u ON p.user_id=u.id WHERE p.id=?').get(req.params.id);
   if (!project) return res.status(404).json({ error: 'Not found' });
   const viewerId = await getViewerId(req);
   if (!project.is_public && project.user_id !== viewerId) return res.status(403).json({ error: 'Private project' });

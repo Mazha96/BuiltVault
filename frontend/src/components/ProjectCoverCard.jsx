@@ -102,7 +102,7 @@ export default function ProjectCoverCard({ project, to, showOwner = false, style
             {emoji} {project.category || 'general'}
           </span>
           {showOwner && displayName && (
-            <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11 }}>@{displayName}</span>
+            <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11 }}>{project.display_name || project.creator_display_name ? displayName : `@${displayName}`}</span>
           )}
         </div>
       </div>
