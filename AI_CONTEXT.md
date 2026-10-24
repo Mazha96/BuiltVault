@@ -44,6 +44,7 @@ This app uses **Clerk** for authentication. Do not remove or replace it.
 
 - All protected API routes use `middleware/auth.js` which verifies Clerk JWTs
 - Frontend uses `ClerkProvider` + `ClerkTokenProvider` (custom component that injects the token into axios)
+- `ClerkProvider` lives in `components/ClerkWithRouter.jsx`, INSIDE `<BrowserRouter>`, and gets React Router's `navigate` as `routerPush`/`routerReplace`. Do not move it back outside the router or drop those props: Clerk then reloads the page between sign-in steps and every sign-in sends two email codes (only the newer one works).
 - The `ClerkTokenProvider` wraps the whole app in `main.jsx`
 - Token is accessed via `useAuth()` hook from `@clerk/clerk-react`
 - **Do NOT use `window.Clerk` polling** — it doesn't work on mobile. Always use the `useAuth` hook.
@@ -133,7 +134,8 @@ Dark theme only. No light mode. Inline styles are used throughout (no Tailwind c
 
 - [ ] "Share Update" toggle on `ProjectDetail.jsx` file upload + task complete flow (backend supports `publish=true`, frontend modal exists as `PublishModal.jsx` but not wired in)
 - [ ] CSV import still has auth token issue on multipart upload — investigate
-- [ ] Clerk is on `pk_test_` (development keys) — double OTP email is a known dev-mode quirk, not a bug to fix in code
+- [x] Double OTP email at sign-in was NOT a dev-mode quirk: it came from ClerkProvider missing router integration (fixed, see Auth section)
+- [ ] `@clerk/clerk-react` v5 is deprecated; consider upgrading to Core 3 (`@clerk/react` + `@clerk/react-router`), which also stops a new code being sent if someone refreshes the code page
 - [ ] Forge/Pulse/Muse sub-agents set up but Telegram bot pairing not completed
 
 ---
