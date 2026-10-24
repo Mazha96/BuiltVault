@@ -1,9 +1,9 @@
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { ClerkProvider } from '@clerk/clerk-react';
 import Navbar from './components/Navbar';
 import Protected from './components/Protected';
 import ClerkTokenProvider from './components/ClerkTokenProvider';
+import ClerkWithRouter from './components/ClerkWithRouter';
 import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
 import ProjectDetail from './pages/ProjectDetail';
@@ -24,8 +24,8 @@ const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 if (!PUBLISHABLE_KEY) throw new Error('Missing Clerk publishable key');
 
 ReactDOM.createRoot(document.getElementById('root')).render(
-    <ClerkProvider publishableKey={PUBLISHABLE_KEY} afterSignInUrl="/dashboard" afterSignUpUrl="/dashboard">
-      <BrowserRouter>
+    <BrowserRouter>
+      <ClerkWithRouter publishableKey={PUBLISHABLE_KEY}>
         <ClerkTokenProvider>
         <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
           <Navbar />
@@ -53,6 +53,6 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           </main>
         </div>
         </ClerkTokenProvider>
-      </BrowserRouter>
-    </ClerkProvider>
+      </ClerkWithRouter>
+    </BrowserRouter>
 );
